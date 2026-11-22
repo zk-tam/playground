@@ -374,13 +374,175 @@
 /* ── Immersion ──────────────────────────────────────────────────────────
    While something has taken over the screen (a scene playing in Absolute
    Cinema), the dock steps out of the way and the page stops scrolling. */
-[data-immersed] {
+[data-immersed],
+[data-typing] {
   overflow: hidden;
 }
-[data-immersed] .dock {
+[data-immersed] .dock,
+[data-typing] .dock {
   translate: 0 160%;
   opacity: 0;
   pointer-events: none;
+}
+
+/* ── Keypad ─────────────────────────────────────────────────────────────
+   The site's own keyboard for touch screens, and the bar it types into (see
+   src/kit/keypad.tsx and keypad-field.tsx).
+
+   Every row is ten letter keys and nine gaps wide. --k is one letter key,
+   worked out from the width of the box the keys sit in, so the keyboard fits
+   any phone and stops growing on a tablet. */
+.keypad-veil {
+  background: color-mix(in oklab, var(--bg) 58%, transparent);
+  backdrop-filter: blur(12px) saturate(140%);
+}
+.keypad-bar {
+  border-radius: 20px;
+}
+/* The control the bar grew out of, while the bar is out. */
+[data-away] {
+  visibility: hidden;
+}
+.keypad-caret {
+  flex: none;
+  width: 2px;
+  height: 1.25em;
+  margin-inline: 1px;
+  border-radius: 1px;
+  background: var(--accent);
+  animation: caret 1.06s steps(1) infinite;
+}
+@keyframes caret {
+  50% {
+    opacity: 0;
+  }
+}
+
+.keypad-sheet {
+  border-radius: 26px 26px 0 0;
+  padding: 10px 0 calc(8px + env(safe-area-inset-bottom));
+}
+.keypad-box {
+  container-type: inline-size;
+  width: 100%;
+  max-width: 520px;
+  margin-inline: auto;
+}
+.keypad {
+  --gap: 6px;
+  --pad: 4px;
+  --k: calc((100cqw - 2 * var(--pad) - 9 * var(--gap)) / 10);
+  --key: rgb(255 255 255 / 0.94);
+  --key-quiet: rgb(118 118 128 / 0.22);
+  --key-down: rgb(118 118 128 / 0.3);
+  --key-quiet-down: rgb(255 255 255 / 0.94);
+  --key-ink: #000;
+  --key-edge: 0 1px 0 rgb(0 0 0 / 0.26);
+  position: relative;
+  display: grid;
+  gap: 11px;
+  padding-inline: var(--pad);
+  color: var(--key-ink);
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+}
+:where([data-theme="dark"], [data-theme="blueprint"]) .keypad {
+  --key: rgb(255 255 255 / 0.21);
+  --key-quiet: rgb(255 255 255 / 0.09);
+  --key-down: rgb(255 255 255 / 0.36);
+  --key-quiet-down: rgb(255 255 255 / 0.24);
+  --key-ink: #fff;
+  --key-edge: 0 1px 0 rgb(0 0 0 / 0.45);
+}
+.keypad-row {
+  display: flex;
+  justify-content: center;
+  gap: var(--gap);
+}
+.key {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: var(--k);
+  height: 43px;
+  border-radius: 9px;
+  background: var(--key);
+  box-shadow: var(--key-edge);
+  font-size: 22px;
+  line-height: 1;
+  cursor: default;
+}
+.key[data-down] {
+  background: var(--key-down);
+}
+.key[data-kind="quiet"] {
+  background: var(--key-quiet);
+  font-size: 15px;
+  font-weight: 500;
+}
+.key[data-kind="quiet"][data-down],
+.key[data-on] {
+  background: var(--key-quiet-down);
+}
+.key[data-key="space"] {
+  font-size: 15px;
+}
+.key[data-kind="go"] {
+  background: var(--accent);
+  color: #fff;
+  font-size: 15px;
+  font-weight: 500;
+  transition: background-color 0.2s ease-out;
+}
+.key[data-kind="go"][data-down] {
+  background: color-mix(in oklab, var(--accent) 78%, black);
+}
+.key[data-kind="bare"] {
+  background: none;
+  box-shadow: none;
+}
+.key[data-kind="bare"][data-down] {
+  opacity: 0.45;
+}
+/* The letter, standing up above the finger. */
+.key-bubble {
+  position: absolute;
+  display: grid;
+  place-items: center;
+  height: 52px;
+  border-radius: 12px;
+  background: color-mix(in oklab, var(--surface) 96%, var(--ink));
+  color: var(--ink);
+  box-shadow:
+    0 0 0 0.5px color-mix(in oklab, var(--ink) 14%, transparent),
+    0 8px 22px -6px rgb(0 0 0 / 0.38);
+  font-size: 31px;
+  line-height: 1;
+  pointer-events: none;
+}
+
+/* The number pad: three wide columns, with the letters under each digit. */
+.keypad[data-layout="number"] {
+  --gap: 7px;
+  --pad: 6px;
+  gap: 7px;
+}
+.keypad[data-layout="number"] .key {
+  width: calc((100cqw - 2 * var(--pad) - 2 * var(--gap)) / 3);
+  height: 48px;
+  align-content: center;
+  gap: 1px;
+  font-size: 25px;
+}
+.keypad[data-layout="number"] .key small {
+  height: 10px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  line-height: 10px;
 }
 
 /* ── Theme picker ───────────────────────────────────────────────────────

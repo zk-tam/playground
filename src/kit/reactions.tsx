@@ -11,6 +11,7 @@ import {
 } from "react";
 import { api } from "@/lib/api";
 import { easing } from "./bars";
+import { KeypadField, onTouchScreen } from "./keypad-field";
 
 const SPARKS = [0, 45, 90, 135, 180, 225, 270, 315];
 
@@ -193,6 +194,9 @@ export function Share({
   );
 }
 
+// Good enough to light the "join" key; the server has the final say.
+const ADDRESS = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+
 /**
  * The bell opens into a place to leave an address. Once it has one, it rings:
  * the bell swings from its crown, the clapper lagging a beat behind.
@@ -200,9 +204,18 @@ export function Share({
  * It is made for the top right of a page: the bell stays where it is and the
  * field slides out to its left, and a short line appears underneath to say
  * what happened.
+ *
+ * On a touch screen there is no room for that, and a real field would bring
+ * up the device's keyboard. There the bell grows into a bar of glass across
+ * the middle of the screen, with the site's own keyboard under it (see
+ * `KeypadField`).
  */
 export function Newsletter() {
   const form = useRef<HTMLFormElement>(null);
+  const button = useRef<HTMLButtonElement>(null);
+  // Whether it is open as the glass bar, not as the field beside the bell.
+  const [sheet, setSheet] = useState(false);
+  const [trouble, setTrouble] = useState(false);
   const input = useRef<HTMLInputElement>(null);
   const bell = useRef<HTMLSpanElement>(null);
   const clapper = useRef<SVGPathElement>(null);
@@ -239,25 +252,46 @@ export function Newsletter() {
   function press() {
     if (done) return onNote("You're on the list.");
     if (open) return setState("idle");
+    setTrouble(false);
+    setNote(({ n }) => ({ text: "", n }));
     setState("open");
-    input.current?.focus({ preventScroll: true });
+    if (onTouchScreen()) setSheet(true);
   }
 
-  async function submit(event: FormEvent) {
-    event.preventDefault();
+  // Beside the bell, the field takes the caret as it opens. This waits for
+  // the field to be let out first: it cannot be focused while it is hidden.
+  useEffect(() => {
+    if (state === "open" && !sheet) input.current?.focus({ preventScroll: true });
+  }, [state, sheet]);
+
+  function close() {
+    setSheet(false);
+    setState((now) => (now === "done" ? "done" : "idle"));
+  }
+
+  async function submit(event?: FormEvent) {
+    event?.preventDefault();
     if (state !== "open") return;
     setState("sending");
+    setTrouble(false);
     try {
       await api("/api/newsletter", "POST", { email });
       try {
         localStorage.setItem("newsletter", "1");
       } catch {}
-      setEmail("");
       setState("done");
-      ring();
       onNote("You're on the list.");
+      if (sheet) {
+        // Let the bar say so, send it back into the bell, then ring.
+        await new Promise((resolve) => setTimeout(resolve, 900));
+        setSheet(false);
+        await new Promise((resolve) => setTimeout(resolve, 560));
+      }
+      setEmail("");
+      ring();
     } catch (error) {
       setState("open");
+      setTrouble(true);
       onNote((error as Error).message);
       form.current?.animate(
         { transform: ["none", "translateX(-5px)", "translateX(4px)", "translateX(-2px)", "none"] },
@@ -273,13 +307,15 @@ export function Newsletter() {
         ref={form}
         onSubmit={submit}
         onKeyDown={(event) => event.key === "Escape" && setState(done ? "done" : "idle")}
-        className={`flex h-8 flex-row-reverse items-center rounded-full transition-[background-color] duration-300 ${open ? "bg-sunken" : ""}`}
+        className={`flex h-8 flex-row-reverse items-center rounded-full transition-[background-color] duration-300 ${open && !sheet ? "bg-sunken" : ""}`}
       >
         <button
+          ref={button}
           type="button"
           aria-label={done ? "Subscribed to the newsletter" : "Get the newsletter"}
           aria-pressed={done}
           aria-expanded={open}
+          aria-haspopup={sheet ? "dialog" : undefined}
           onClick={press}
           className="grid size-8 shrink-0 place-items-center rounded-full text-ink-2 transition-[scale,color,background-color] duration-200 ease-out-quint hover:bg-sunken hover:text-ink active:scale-90 aria-pressed:text-ink"
         >
@@ -306,12 +342,12 @@ export function Newsletter() {
 
         {/* 0fr → 1fr lets the field slide out to its natural width. */}
         <div
-          style={{ gridTemplateColumns: open ? "1fr" : "0fr" }}
+          style={{ gridTemplateColumns: open && !sheet ? "1fr" : "0fr" }}
           className="grid transition-[grid-template-columns] duration-500 ease-out-quint"
         >
           <div
-            inert={!open}
-            className={`flex min-w-0 items-center overflow-hidden transition-opacity duration-300 ${open ? "delay-100" : "opacity-0"}`}
+            inert={!open || sheet}
+            className={`flex min-w-0 items-center overflow-hidden transition-opacity duration-300 ${open && !sheet ? "delay-100" : "opacity-0"}`}
           >
             <input
               ref={input}
@@ -347,6 +383,29 @@ export function Newsletter() {
           {note.text}
         </span>
       </p>
+
+      <KeypadField
+        open={sheet}
+        onClose={close}
+        origin={button}
+        value={email}
+        // An address has no spaces in it, whatever the space bar says.
+        onChange={(next) => setEmail(next.replace(/\s/g, ""))}
+        onSubmit={submit}
+        layout="email"
+        label="Email address"
+        placeholder="you@example.com"
+        enterLabel="join"
+        busy={state === "sending"}
+        ready={ADDRESS.test(email) || done}
+        note={{ text: note.text, n: note.n, wrong: trouble }}
+        icon={
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" />
+            <path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" />
+          </svg>
+        }
+      />
     </div>
   );
 }

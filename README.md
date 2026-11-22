@@ -86,6 +86,14 @@ the newsletter gives that visitor an email; nothing else changes.
   - `wheel.tsx` — a notched wheel of labelled stops under a fixed needle.
   - `words.tsx` — a line of text that arrives a word at a time.
   - `reactions.tsx` — like (shared count), share, and the newsletter bell.
+  - `keypad.tsx` — the site's own on-screen keyboard for touch screens, in
+    the manner of the iPhone's: a full keyboard (`text`, or `email` with @ and
+    . beside the space bar) and a number pad (`number`).
+  - `keypad-field.tsx` — a field for touch screens that never brings up the
+    device's keyboard: the control that was pressed grows into a bar of glass
+    across the middle of the screen, with the keypad under it. Used by the
+    newsletter bell; give any field one by passing its `origin`, `value` and
+    `layout`.
   - `player/` — the YouTube player: `controller.ts` wraps the IFrame Player API
     (loaded from youtube.com at runtime, the one external script),
     `scrubber.tsx` is the timeline, `transport.tsx` the buttons.
