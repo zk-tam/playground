@@ -1,3 +1,4 @@
+import { Analytics } from "@vercel/analytics/next";
 import type { Metadata, Viewport } from "next";
 import { IBM_Plex_Sans } from "next/font/google";
 import { Backdrop } from "@/components/backdrop";
@@ -50,6 +51,9 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         <Backdrop />
         {children}
         <Dock />
+        {/* Page views, counted by Vercel once the site is hosted there. It
+            sends nothing while developing. */}
+        <Analytics />
       </body>
     </html>
   );
