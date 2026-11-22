@@ -35,14 +35,20 @@ the list) and run:
 python3 scripts/make-covers.py
 ```
 
-It trims any black bars, crops every frame to 16:9, and writes the cover the
-site draws in ASCII (`public/cinema/<id>.jpg`) and the link-preview picture
-(`public/cinema/og/<id>.jpg`). Until a scene has its own frame, both come from
-the video's YouTube thumbnail.
+It trims any black bars, crops every frame to 16:9 and writes the cover the
+site draws in ASCII (`public/cinema/<id>.jpg`). Until a scene has its own
+frame, its cover and link preview come from the video's YouTube thumbnail.
 
-The home page and the Absolute Cinema page have no frame of their own; their
-link-preview pictures are made by `node scripts/make-og.mjs` and kept in
-`public/og/`.
+Link previews are drawn in characters too, ahead of time, because a preview
+has to be a plain picture file:
+
+```bash
+node scripts/make-og.mjs
+```
+
+It writes one for the home page, one for Absolute Cinema and one per scene
+(`public/og/`, `public/cinema/og/<id>.png`). Run it after adding a scene's
+cover. It needs IBM Plex Mono installed.
 
 Link previews need the site's full address: set `NEXT_PUBLIC_SITE_URL` when
 deploying. It is fixed at build time, so with two domains on one deployment

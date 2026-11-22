@@ -1,51 +1,47 @@
-// Makes the link-preview pictures for the pages that have no frame of their
-// own: the home page and the Absolute Cinema page. (Scenes get theirs from
-// scripts/make-covers.py.)
+// Makes every link-preview picture on the site, each one drawn in characters
+// like the covers are.
 //
 //   node scripts/make-og.mjs
 //
-// It writes 1200x630 pictures into public/og/, which are committed like any
-// other picture. Run it again only when the words or the artwork change.
+//   public/og/home.png             the site's words, set large
+//   public/og/absolute-cinema.png  the module's own picture, whole, on the dark
+//   public/cinema/og/<id>.png      each scene, from its cover
 //
-// The type is IBM Plex Mono if it is installed on this machine, and the font
-// that ships with Next if not. Needs `sips`, which ships with macOS, for the
-// one picture that is saved as a JPEG.
+// The pictures are committed like any other. Run this again when a scene is
+// added (after scripts/make-covers.py), or when the words or artwork change.
+//
+// Needs IBM Plex Mono installed, and `sips`, which ships with macOS.
 
-import { execFile } from "node:child_process";
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
-import { homedir } from "node:os";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { promisify } from "node:util";
 import { ImageResponse } from "next/og.js";
 import { createElement as h } from "react";
+import { HEIGHT, NIGHT, WIDTH, ascii, mono } from "./ascii-og.mjs";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
-const out = join(root, "public/og");
-const WIDTH = 1200;
-const HEIGHT = 630;
-const NIGHT = "#05070c"; // the dark the scene covers are drawn on
+const work = await mkdtemp(join(tmpdir(), "make-og-"));
 
-async function fonts() {
-  const found = [];
-  for (const [file, weight] of [["IBMPlexMono-Regular.ttf", 400], ["IBMPlexMono-Medium.ttf", 500]]) {
-    for (const folder of [join(homedir(), "Library/Fonts"), "/Library/Fonts"]) {
-      const data = await readFile(join(folder, file)).catch(() => null);
-      if (!data) continue;
-      found.push({ name: "Plex", data, weight, style: "normal" });
-      break;
-    }
-  }
-  if (!found.length) console.log("  IBM Plex Mono not found; using Next's own font.");
-  return found.length ? found : undefined;
-}
-
-async function png(element, options) {
+/** Lays out a page and saves it as a picture for `ascii` to draw from. */
+async function picture(name, element, options) {
   const response = new ImageResponse(element, { width: WIDTH, height: HEIGHT, ...options });
-  return Buffer.from(await response.arrayBuffer());
+  const file = join(work, name);
+  await writeFile(file, Buffer.from(await response.arrayBuffer()));
+  return file;
 }
 
-/** The site's name, small, and what it stands for, large. Nothing else. */
+async function save(target, source) {
+  const file = join(root, "public", target);
+  await mkdir(join(file, ".."), { recursive: true });
+  await writeFile(file, await ascii(source));
+  console.log(`  public/${target}`);
+}
+
+/**
+ * What the site stands for, and nothing else. Set very large and heavy:
+ * anything finer would not survive being drawn in characters.
+ */
 function home() {
   return h(
     "div",
@@ -55,19 +51,19 @@ function home() {
         height: "100%",
         display: "flex",
         flexDirection: "column",
-        justifyContent: "space-between",
-        padding: "72px 80px",
-        backgroundColor: NIGHT,
-        color: "#ededed",
+        justifyContent: "flex-end",
+        padding: "0 56px 60px",
+        backgroundColor: "#000",
+        color: "#fff",
         fontFamily: "Plex",
+        fontWeight: 700,
+        fontSize: 150,
+        lineHeight: 1.02,
+        letterSpacing: "-0.03em",
       },
     },
-    h("div", { style: { fontSize: 34, fontWeight: 400, color: "#8c8c8c" } }, "Playground"),
-    h(
-      "div",
-      { style: { fontSize: 112, fontWeight: 500, letterSpacing: "-0.045em", lineHeight: 1 } },
-      "Be Opinionated.",
-    ),
+    h("div", {}, "Be"),
+    h("div", {}, "Opinionated."),
   );
 }
 
@@ -98,28 +94,20 @@ async function cinema() {
         backgroundColor: NIGHT,
       },
     },
-    h("img", {
-      src: `data:image/png;base64,${file.toString("base64")}`,
-      width,
-      height: HEIGHT,
-    }),
+    h("img", { src: `data:image/png;base64,${file.toString("base64")}`, width, height: HEIGHT }),
     h("div", { style: { ...fade("right"), left: side } }),
     h("div", { style: { ...fade("left"), right: side } }),
   );
 }
 
-await mkdir(out, { recursive: true });
-const type = await fonts();
+try {
+  await save("og/home.png", await picture("home.png", home(), { fonts: await mono() }));
+  await save("og/absolute-cinema.png", await picture("cinema.png", await cinema()));
 
-await writeFile(join(out, "home.png"), await png(home(), { fonts: type }));
-console.log("  public/og/home.png");
-
-// A photograph is far smaller as a JPEG.
-const whole = join(out, "absolute-cinema.png");
-await writeFile(whole, await png(await cinema()));
-await promisify(execFile)("sips", [
-  "-s", "format", "jpeg", "-s", "formatOptions", "86",
-  whole, "--out", join(out, "absolute-cinema.jpg"),
-]);
-await rm(whole);
-console.log("  public/og/absolute-cinema.jpg");
+  // Every scene that has a cover of its own. The cover is 16:9; the preview
+  // is a little wider, so a sliver comes off the top and bottom.
+  const covers = JSON.parse(await readFile(join(root, "src/modules/cinema/covers.json"), "utf8"));
+  for (const id of covers) await save(`cinema/og/${id}.png`, join(root, `public/cinema/${id}.jpg`));
+} finally {
+  await rm(work, { recursive: true, force: true });
+}

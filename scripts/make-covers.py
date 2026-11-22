@@ -14,8 +14,9 @@ For every frame it finds, this:
   2. crops what is left to 16:9, the shape of the player and of four of the
      five original frames, so the set loses as little picture as possible,
   3. writes `public/cinema/<id>.jpg` (1600x900), which the site draws in ASCII,
-  4. writes `public/cinema/og/<id>.jpg` (1200x630), the picture shown when a
-     scene's link is shared,
+  4. writes `public/cinema/og/<id>.jpg` (1200x630), the plain photograph at
+     link-preview size. (The preview actually served is the cover drawn in
+     characters: run `node scripts/make-og.mjs` afterwards to make it.)
   5. records the scene in `src/modules/cinema/covers.json`, which is how the
      site knows to use it instead of the YouTube thumbnail.
 

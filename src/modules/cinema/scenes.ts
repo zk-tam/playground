@@ -8,8 +8,9 @@ import made from "./covers.json";
  *
  * To give a scene its own cover, put a frame from the video in `covers/`
  * (named after the slug, or its position in this list) and run
- * `python3 scripts/make-covers.py`. Until then the cover is drawn from the
- * video's YouTube thumbnail.
+ * `python3 scripts/make-covers.py`, then `node scripts/make-og.mjs` for its
+ * link preview. Until then the cover is drawn from the video's YouTube
+ * thumbnail.
  */
 export type Scene = {
   /** The YouTube video id: the part after `v=` in its link. */
@@ -98,10 +99,13 @@ export const coverOf = (scene: Scene) =>
     ? `/cinema/${scene.id}.jpg`
     : `https://i.ytimg.com/vi/${scene.id}/mqdefault.jpg`;
 
-/** The picture shown when a scene's link is shared. */
+/**
+ * The picture shown when a scene's link is shared: its cover, already drawn
+ * in characters by scripts/make-og.mjs.
+ */
 export const previewOf = (scene: Scene) =>
   framed.has(scene.id)
-    ? `/cinema/og/${scene.id}.jpg`
+    ? `/cinema/og/${scene.id}.png`
     : `https://i.ytimg.com/vi/${scene.id}/hqdefault.jpg`;
 
 export const pathOf = (scene: Scene) => `/absolute-cinema/${scene.slug}`;

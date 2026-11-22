@@ -1,9 +1,9 @@
 import type { Metadata } from "next";
 import { CinemaPage } from "@/modules/cinema/cinema-page";
 
-// The picture is the module's own, set on the dark at link-preview size by
-// scripts/make-og.mjs.
-const picture = { url: "/og/absolute-cinema.jpg", width: 1200, height: 630, alt: "Absolute Cinema" };
+// The picture is the module's own, set on the dark at link-preview size and
+// drawn in characters by scripts/make-og.mjs.
+const picture = { url: "/og/absolute-cinema.png", width: 1200, height: 630, alt: "Absolute Cinema" };
 
 const description = "Artifacts of nostalgia";
 
