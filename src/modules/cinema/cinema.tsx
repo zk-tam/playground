@@ -143,6 +143,17 @@ export function Cinema({ start = 0 }: { start?: number }) {
     return () => controller.destroy();
   }, [controller]);
 
+  // Have the scene waiting in the player before anyone presses play, so the
+  // first press starts it (see `prepare`). A short pause first: the page gets
+  // to draw, and turning the wheel past several scenes fetches only the last.
+  useEffect(() => {
+    const id = setTimeout(
+      () => controller.prepare({ videoId: scene.id, start: scene.start }),
+      600,
+    );
+    return () => clearTimeout(id);
+  }, [controller, scene.id, scene.start]);
+
   // Links made before scenes had their own addresses ended in #<video id>.
   // Honour them, and move the visitor on to the proper address.
   useEffect(() => {

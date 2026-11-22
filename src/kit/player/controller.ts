@@ -2,6 +2,7 @@ import { loadYouTubeApi, type Source, type YTPlayer } from "./youtube";
 
 const STORAGE_KEY = "playground:player";
 export const RATES = [1, 1.25, 1.5, 2, 0.75];
+const STALL_MS = 3500; // how long a start may take before it counts as refused
 
 export type Status =
   | "empty"
@@ -69,6 +70,11 @@ export class PlayerController {
   private listeners = new Set<() => void>();
   private state: Snapshot = EMPTY;
   private pending: { source: Source; autoplay: boolean } | null = null;
+  // What `prepare` was asked to have waiting, and the video that is.
+  private standby: Source | null = null;
+  private cued: string | null = null;
+  // When the player was last told to start, to notice if it never does.
+  private askedAt = 0;
   private wanted: string | undefined;
   private wantedStart = 0;
   private seekOnPlay = 0;
@@ -161,6 +167,31 @@ export class PlayerController {
 
   /* ── Loading ────────────────────────────────────────────────────────── */
 
+  /**
+   * Gets the player up and a video waiting in it, before anyone presses play.
+   *
+   * A browser only lets a video with sound start as the direct result of a
+   * press. Fetching YouTube's player takes a second or two, so if that only
+   * began at the press, the press is long over by the time the player could
+   * start, the browser refuses, and a second press is needed. With the player
+   * already there, the first press reaches it at once.
+   *
+   * Nothing shows and nothing plays: the status stays "empty".
+   */
+  prepare(source: Source) {
+    if (this.state.status !== "empty" || !source.videoId || source.listId) return;
+    this.standby = source;
+    if (!this.player) this.create();
+    else if (this.ready) this.cue();
+  }
+
+  private cue() {
+    const source = this.standby;
+    if (!this.player || !source?.videoId || this.cued === source.videoId) return;
+    this.player.cueVideoById({ videoId: source.videoId, startSeconds: source.start ?? 0 });
+    this.cued = source.videoId;
+  }
+
   load(source: Source, { autoplay = true } = {}) {
     this.pending = { source, autoplay };
     this.skipped = 0;
@@ -177,12 +208,22 @@ export class PlayerController {
       index: source.index ?? 0,
       error: null,
     });
+    this.askedAt = autoplay ? performance.now() : 0;
     if (!this.player) this.create();
-    else if (this.ready) this.apply();
+    else if (!this.ready) return;
+    else if (autoplay && !source.listId && source.videoId && this.cued === source.videoId) {
+      // It is already waiting in the player: just start it.
+      this.pending = null;
+      this.player.playVideo();
+    } else this.apply();
+    this.cued = null;
   }
 
   clear() {
     this.pending = null;
+    this.standby = null;
+    this.cued = null;
+    this.askedAt = 0;
     if (this.ready) this.player?.stopVideo();
     const { volume, muted, rate } = this.state;
     this.set({ ...EMPTY, volume, muted, rate });
@@ -218,7 +259,12 @@ export class PlayerController {
               this.ready = true;
               this.player?.setVolume(this.state.volume);
               if (this.state.muted) this.player?.mute();
-              this.apply();
+              if (this.pending) {
+                // Asked to play before the player existed. Count the wait
+                // from now, when it can actually begin.
+                if (this.askedAt) this.askedAt = performance.now();
+                this.apply();
+              } else this.cue();
             },
             onStateChange: (event) => this.onState(event.data),
             onError: (event) => this.onError(event.data),
@@ -286,6 +332,7 @@ export class PlayerController {
 
     this.sync({ status, error: null });
     if (code === 1) {
+      this.askedAt = 0;
       this.skipped = 0;
       if (this.seekOnPlay && !this.wanted) {
         const start = this.seekOnPlay;
@@ -355,6 +402,20 @@ export class PlayerController {
     if (!this.ready || this.state.status === "empty") return;
     this.rebase();
     this.sync();
+    // Told to start, and still sitting there seconds later: the browser
+    // refused to let it start without a fresh press. Say it is ready rather
+    // than loading for ever, so the next press starts it.
+    if (
+      this.state.status === "loading" &&
+      this.askedAt &&
+      performance.now() - this.askedAt > STALL_MS
+    ) {
+      const state = this.player?.getPlayerState?.();
+      if (state === -1 || state === 5) {
+        this.askedAt = 0;
+        this.set({ status: "ready" });
+      }
+    }
     const { status } = this.state;
     const active = status === "playing" || status === "paused";
     if (active && performance.now() - this.savedAt > 2000) this.persist();
