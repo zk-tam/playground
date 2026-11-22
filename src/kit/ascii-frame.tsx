@@ -4,8 +4,11 @@ import { useEffect, useRef } from "react";
 
 // Sparse to dense. Small marks only, so at this size they read as tone.
 const RAMP = " .`,:;-=+*#%@";
-const CELL_W = 3; // css px
-const CELL_H = 6;
+// How many characters the picture is across, whatever size it is shown at.
+// The same fineness as the link previews (scripts/ascii-og.mjs): fine enough
+// that the characters read as tone, and the picture keeps the same detail on
+// a phone as on a desk.
+const COLUMNS = 400;
 const REVEAL_MS = 900;
 const EDGE = 0.09; // how far in from each side an inked picture thins out
 
@@ -226,10 +229,12 @@ export function AsciiFrame({
       const width = el.clientWidth;
       const height = el.clientHeight;
       if (!width || !height) return;
-      cellW = Math.round(CELL_W * ratio);
-      cellH = Math.round(CELL_H * ratio);
       canvas.width = Math.round(width * ratio);
       canvas.height = Math.round(height * ratio);
+      // Cells are a whole number of screen pixels, so characters stay crisp;
+      // the count across lands as near COLUMNS as that allows.
+      cellW = Math.max(2, Math.round(canvas.width / COLUMNS));
+      cellH = cellW * 2;
       columns = Math.floor(canvas.width / cellW);
       rows = Math.floor(canvas.height / cellH);
       if (!columns || !rows) return;
@@ -326,7 +331,7 @@ export function AsciiFrame({
       }
 
       ctx.clearRect(0, 0, canvas.width, canvas.height);
-      ctx.font = `bold ${Math.round(cellH * 0.95)}px ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace`;
+      ctx.font = `bold ${cellH * 0.95}px ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace`;
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
       const finish = () => {
