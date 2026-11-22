@@ -66,9 +66,10 @@ through one connection string.
 Without a database the site still works; likes and sign-ups answer that they
 are unavailable.
 
-A visitor is a random id in a cookie until they sign up for the newsletter;
-from then on that browser speaks for their address, and their earlier likes
-move over to it. `src/server/identity.ts` explains the rules.
+Everyone who does something (likes a scene, signs up) gets one row in
+`visitors`, tied to their browser by a random id in a cookie. Signing up for
+the newsletter gives that visitor an email; nothing else changes.
+`src/server/identity.ts` explains the rules.
 
 ### Adding a module
 

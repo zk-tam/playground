@@ -1,6 +1,6 @@
 import { scenes } from "@/modules/cinema/scenes";
 import { DatabaseError, query } from "@/server/db";
-import { ME } from "@/server/identity";
+import { ME, ensure } from "@/server/identity";
 import { body, fail, limited, sameOrigin, visitor } from "@/server/request";
 
 // The only things that can be liked: each curated scene.
@@ -10,7 +10,7 @@ const known = new Set(KEYS);
 /** Counts for everything, and which of them this visitor liked. Never who. */
 async function view(me: string) {
   const { rows } = await query<{ key: string; count: number; mine: boolean }>(
-    `select key, count(*)::int as count, bool_or(visitor = ${ME}) as mine
+    `select key, count(*)::int as count, coalesce(bool_or(visitor = ${ME}), false) as mine
      from likes
      where key = any($2::text[])
      group by key`,
@@ -49,12 +49,12 @@ export async function POST(request: Request) {
   if (await limited("like", me, 60, 60_000)) return fail(429, "Slow down a little.");
 
   try {
-    // One row per person per thing, so liking twice changes nothing. The
-    // person is their address once they have signed up, their cookie until.
+    // One row per visitor per thing, so liking twice changes nothing. Liking
+    // is what makes a browser a visitor; taking a like back never does.
     if (input.on)
       await query(
-        `insert into likes (visitor, key) values (${ME}, $2) on conflict do nothing`,
-        [me, key],
+        `insert into likes (visitor, key) values ($1, $2) on conflict do nothing`,
+        [await ensure(me), key],
       );
     else await query(`delete from likes where visitor = ${ME} and key = $2`, [me, key]);
     return Response.json(await view(me));

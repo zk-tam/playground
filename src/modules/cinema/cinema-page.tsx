@@ -9,7 +9,7 @@ export function CinemaPage({ start = 0 }: { start?: number }) {
       <header className="flex items-start justify-between">
         <div>
           <h1 className="font-medium">Absolute Cinema</h1>
-          <p className="text-muted">{scenes.length} scenes</p>
+          <p className="text-muted">{scenes.length} artifacts</p>
         </div>
         <HeaderTools />
       </header>

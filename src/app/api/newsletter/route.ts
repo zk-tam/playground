@@ -6,8 +6,8 @@ const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 const ROOM = 20_000; // the most addresses the list will take
 
 /**
- * Collects an address for the newsletter, and from then on lets this browser
- * speak for it (see `src/server/identity.ts`). Nothing here sends mail, and
+ * Collects an address for the newsletter, and makes it this visitor's own
+ * (see `src/server/identity.ts`). Nothing here sends mail, and
  * there is no way to read the list back over HTTP. The addresses sit in the
  * `newsletter` table until a mail provider is wired in.
  */

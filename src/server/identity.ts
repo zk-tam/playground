@@ -1,65 +1,91 @@
-import { DatabaseError, transaction } from "./db";
+import { DatabaseError, query, transaction, type Run } from "./db";
 
 /**
  * Who someone is, as far as the site knows.
  *
- * Before they sign up, a visitor is the random id in their browser's `vid`
- * cookie. Once they sign up for the newsletter, that browser speaks for their
- * email address instead: the `identities` table says which browser stands for
- * which address, and everything stored against the cookie id is moved over to
- * the address.
+ * Every person who has done something here (liked a scene, signed up) has one
+ * row in `visitors`. Their browser is tied to it through the random id in its
+ * `vid` cookie (`browsers`). What they do is stored against the visitor, never
+ * against the cookie or an address, so nothing has to be rewritten when they
+ * sign up: the visitor simply gains an email, and from then on that is who
+ * they are.
  *
  * The cookie stays what the browser sends. The address itself never goes in a
  * cookie, where it could be read or forged.
  *
  * One limit, on purpose: an address is not proven to belong to whoever typed
  * it, because the site sends no mail yet. So an address belongs to the first
- * browser that signs up with it, and a second browser typing the same address
- * is added to nothing and learns nothing. When mail is wired in, a link in it
- * is how a second device will join the same identity.
+ * visitor that signs up with it, and another browser typing the same address
+ * joins nothing and learns nothing. When mail is wired in, a link in it is
+ * how a second device will join the same visitor.
  */
 
 /**
- * SQL for "the identity of the visitor in $1": their address if this browser
- * has signed up, their cookie id if not. `$1` must be the `vid` cookie.
+ * SQL for "the visitor behind the browser in $1", or null if that browser has
+ * never done anything. `$1` must be the `vid` cookie. Reading only: it never
+ * creates a visitor.
  */
-export const ME = `coalesce((select email from identities where visitor = $1), $1)`;
+export const ME = `(select visitor from browsers where cookie = $1)`;
 
 /**
- * Makes this browser speak for `email`, and moves what it has done so far
- * over to that address. Returns whether it did: false when another browser
- * already speaks for the address.
+ * The visitor behind this browser, made now if this is the first thing the
+ * browser has done. Also notes that they were just here.
  */
-export async function claim(visitor: string, email: string) {
+export async function ensure(cookie: string, run: Run = query): Promise<string> {
+  const { rows } = await run<{ visitor: string | null; made: string | null }>(
+    `with known as (
+       select visitor from browsers where cookie = $1
+     ), seen as (
+       update visitors set last_seen = now() where id = (select visitor from known)
+     ), made as (
+       insert into visitors (id)
+       select gen_random_uuid() where not exists (select 1 from known)
+       returning id
+     ), tied as (
+       insert into browsers (cookie, visitor)
+       select $1, id from made
+       on conflict (cookie) do nothing
+       returning visitor
+     )
+     select coalesce((select visitor from known), (select visitor from tied)) as visitor,
+            (select id from made) as made`,
+    [cookie],
+  );
+  const found = rows[0]?.visitor;
+  if (found) return found;
+
+  // Two requests from the same new browser arrived together and the other one
+  // got there first. Drop the spare visitor and use theirs.
+  if (rows[0]?.made) await run(`delete from visitors where id = $1`, [rows[0].made]);
+  const again = await run<{ visitor: string }>(`select visitor from browsers where cookie = $1`, [cookie]);
+  if (!again.rows[0]) throw new DatabaseError("Could not tell who this browser is.");
+  return again.rows[0].visitor;
+}
+
+/**
+ * Makes `email` this visitor's address. Returns whether it did: false when
+ * another visitor already has the address. The address must already be in
+ * `newsletter`.
+ */
+export async function claim(cookie: string, email: string) {
   try {
     return await transaction(async (run) => {
-      const mine = await run<{ email: string }>(
-        `select email from identities where visitor = $1 for update`,
+      const visitor = await ensure(cookie, run);
+      const mine = await run<{ email: string | null }>(
+        `select email from visitors where id = $1 for update`,
         [visitor],
       );
-      const before = mine.rows[0]?.email;
-      if (before === email) return true;
+      if (mine.rows[0]?.email === email) return true;
 
-      const taken = await run(`select 1 from identities where email = $1`, [email]);
+      const taken = await run(`select 1 from visitors where email = $1`, [email]);
       if (taken.rowCount) return false;
 
-      // A browser that signs up again with a different address moves to it.
-      if (before) await run(`update identities set email = $2 where visitor = $1`, [visitor, email]);
-      else await run(`insert into identities (visitor, email) values ($1, $2)`, [visitor, email]);
-
-      // Carry over what was stored against the old identity. Where both have
-      // liked the same thing, one like is enough.
-      const from = before ?? visitor;
-      await run(
-        `delete from likes old using likes kept
-         where old.visitor = $1 and kept.visitor = $2 and old.key = kept.key`,
-        [from, email],
-      );
-      await run(`update likes set visitor = $2 where visitor = $1`, [from, email]);
+      // Signing up again with a different address moves the visitor to it.
+      await run(`update visitors set email = $2 where id = $1`, [visitor, email]);
       return true;
     });
   } catch (error) {
-    // Two browsers reached for the same address at the same moment, and the
+    // Two visitors reached for the same address at the same moment, and the
     // other one got it.
     if (error instanceof DatabaseError && error.code === "23505") return false;
     throw error;

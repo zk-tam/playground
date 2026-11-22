@@ -31,7 +31,7 @@ try {
   await client.query(await readFile(new URL("../db/schema.sql", import.meta.url), "utf8"));
   const { rows } = await client.query(
     `select table_name from information_schema.tables
-     where table_schema = current_schema() and table_name in ('likes', 'newsletter', 'identities')
+     where table_schema = current_schema() and table_name in ('newsletter', 'visitors', 'browsers', 'likes')
      order by table_name`,
   );
   console.log(`Ready: ${rows.map((row) => row.table_name).join(", ")}.`);
