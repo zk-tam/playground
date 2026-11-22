@@ -1,26 +1,442 @@
 @import "tailwindcss";
 
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *, [data-theme="blueprint"], [data-theme="blueprint"] *));
+
+/* ── Tokens ─────────────────────────────────────────────────────────────
+   Runtime variables, one block per theme. `data-theme` sits on <html>, and
+   can also sit on any subtree (a dark stage inside a light page).
+
+   Light and Dark are plain. Blueprint puts a drawing behind the page (see
+   .backdrop). All three use solid surfaces, and in every one the
+   secondary and muted text clears 4.5:1 against the page, the cards and the
+   sunken fills. Every theme defines the same set, so components never need to
+   know which one is on. */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  color-scheme: light;
+  --bg: #fcfcfc;
+  --surface: #ffffff;
+  --sunken: #f2f2f1;
+  --ink: #111111;
+  --ink-2: #5f5f5f;
+  --muted: #8c8c8c;
+  --line: rgb(0 0 0 / 0.08);
+  --accent: #0f62fe;
+  --like: #ff3b5c;
+  --danger: #e5484d;
+}
+
+[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #0a0a0a;
+  --surface: #141414;
+  --sunken: #1f1f1f;
+  --ink: #ededed;
+  --ink-2: #a1a1a1;
+  --muted: #6e6e6e;
+  --line: rgb(255 255 255 / 0.09);
+  --accent: #4d8dff;
+  --like: #ff4d6a;
+  --danger: #ff6369;
+}
+
+/* Blueprint: deep navy drafting film, cool white ink, one cyan accent. */
+[data-theme="blueprint"] {
+  color-scheme: dark;
+  --bg: #0a1120;
+  --surface: #101a30;
+  --sunken: #1b2743;
+  --ink: #e8eef9;
+  --ink-2: #b4c0d6;
+  --muted: #8d9bb6;
+  --line: rgb(150 180 255 / 0.17);
+  --accent: #5cc8ff;
+  --like: #ff6b81;
+  --danger: #ff7a7a;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-sans: var(--font-plex), ui-sans-serif, system-ui, sans-serif;
+
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-sunken: var(--sunken);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-muted: var(--muted);
+  --color-line: var(--line);
+  --color-accent: var(--accent);
+  --color-like: var(--like);
+  --color-danger: var(--danger);
+
+  --shadow-stage:
+    0 0 0 1px var(--line), 0 1px 1px rgb(0 0 0 / 0.02),
+    0 14px 32px -14px rgb(0 0 0 / 0.1);
+  --shadow-float:
+    0 0 0 1px var(--line), 0 2px 4px rgb(0 0 0 / 0.04),
+    0 18px 40px -10px rgb(0 0 0 / 0.18);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+@theme static {
+  /* Easing. The springs are sampled from a real damped spring. */
+  --ease-out-quint: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-in-out-quint: cubic-bezier(0.83, 0, 0.17, 1);
+  --ease-spring: linear(
+    0, 0.043, 0.153, 0.303, 0.471, 0.637, 0.788, 0.917, 1.018, 1.091, 1.136,
+    1.159, 1.162, 1.152, 1.131, 1.106, 1.078, 1.052, 1.028, 1.008, 0.993, 0.983,
+    0.976, 0.974, 0.974, 0.976, 0.98, 0.984, 0.989, 0.993, 0.996, 0.999, 1.002,
+    1.003, 1.004, 1.004, 1.004, 1.004, 1.003, 1.002, 1
+  );
+  --ease-spring-soft: linear(
+    0, 0.029, 0.103, 0.202, 0.313, 0.426, 0.535, 0.634, 0.721, 0.796, 0.858,
+    0.908, 0.947, 0.976, 0.997, 1.012, 1.021, 1.026, 1.028, 1.028, 1.026, 1.024,
+    1.021, 1.018, 1.014, 1.011, 1.009, 1.007, 1.005, 1.003, 1.002, 1.001, 1
+  );
+
+  --animate-word-in: word-in 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
+  --animate-roll-in: roll-in 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
+  --animate-pop: pop 0.5s var(--ease-spring) both;
+  --animate-ring: ring 0.6s cubic-bezier(0.22, 1, 0.36, 1) both;
+  --animate-spark: spark 0.6s cubic-bezier(0.22, 1, 0.36, 1) both;
+  --animate-eq: eq 0.9s ease-in-out infinite alternate;
+  --animate-hud: hud 1.4s cubic-bezier(0.22, 1, 0.36, 1) both;
+  --animate-note: hud 3.6s cubic-bezier(0.22, 1, 0.36, 1) both;
+
+  @keyframes word-in {
+    from {
+      opacity: 0;
+      filter: blur(8px);
+      transform: translateY(0.4em);
+    }
+  }
+  @keyframes roll-in {
+    from {
+      opacity: 0;
+      filter: blur(2px);
+      transform: translateY(calc(var(--dir, 1) * 0.7em));
+    }
+  }
+  @keyframes pop {
+    from {
+      transform: scale(0.6);
+    }
+  }
+  @keyframes ring {
+    from {
+      opacity: 0.7;
+      transform: scale(0.4);
+    }
+    to {
+      opacity: 0;
+      transform: scale(1.5);
+    }
+  }
+  @keyframes spark {
+    from {
+      opacity: 1;
+      transform: rotate(var(--a)) translateY(-10px) scale(1);
+    }
+    to {
+      opacity: 0;
+      transform: rotate(var(--a)) translateY(-30px) scale(0.3);
+    }
+  }
+  @keyframes hud {
+    0% {
+      opacity: 0;
+      transform: translateY(4px);
+    }
+    12%,
+    70% {
+      opacity: 1;
+      transform: none;
+    }
+    100% {
+      opacity: 0;
+    }
+  }
+  @keyframes eq {
+    from {
+      transform: scaleY(0.25);
+    }
+    to {
+      transform: scaleY(1);
+    }
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+/* ── Base ───────────────────────────────────────────────────────────── */
+@layer base {
+  html {
+    background: var(--bg);
+    scroll-behavior: smooth;
+    -webkit-text-size-adjust: 100%;
+  }
+
+  /* The page colour lives on <html>, so the backdrop can sit between it and
+     the content. */
+  body {
+    color: var(--ink);
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  ::selection {
+    background: color-mix(in oklab, var(--accent) 22%, transparent);
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+
+  button {
+    cursor: pointer;
+  }
+}
+
+/* ── Backdrop ───────────────────────────────────────────────────────────
+   A fixed layer behind the page. The plain themes leave it switched off.
+
+   Blueprint: ASCII art drawn on a canvas by <Backdrop>: the Moon, in a
+   field of stars, lit from wherever the pointer is. CSS only dims it behind
+   the reading column, so it never competes with text. */
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  overflow: hidden;
+  pointer-events: none;
+  display: none;
+}
+[data-theme="blueprint"] .backdrop {
+  display: block;
+}
+.backdrop canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: none;
+}
+[data-theme="blueprint"] .backdrop canvas {
+  display: block;
+  /* Full strength in the margins, faint behind the 640px column. */
+  mask-image: linear-gradient(
+    90deg,
+    black,
+    black calc(50% - 420px),
+    rgb(0 0 0 / 0.18) calc(50% - 320px),
+    rgb(0 0 0 / 0.18) calc(50% + 320px),
+    black calc(50% + 420px),
+    black
+  );
+}
+@media (max-width: 760px) {
+  /* On a phone the Moon rises from the bottom, below the text, so only the
+     top of the screen needs to be kept quiet for reading. */
+  [data-theme="blueprint"] .backdrop canvas {
+    mask-image: linear-gradient(rgb(0 0 0 / 0.3), rgb(0 0 0 / 0.3) 45%, black 80%);
+  }
+}
+
+/* ── Glass ──────────────────────────────────────────────────────────────
+   A slab of glass floating over the page: what is behind it shows through,
+   blurred and a little richer. The edges are what make it glass rather than
+   a tinted panel: a bright rim along the top where light lands, a faint one
+   underneath where it leaves, and a soft shadow inside the bottom edge that
+   gives it thickness. A glint follows the pointer along the top (--light). */
+.glass {
+  --glass-tint: color-mix(in oklab, var(--surface) 46%, transparent);
+  --glass-rim: rgb(255 255 255 / 0.85);
+  --glass-rim-low: rgb(255 255 255 / 0.35);
+  --glass-edge: rgb(0 0 0 / 0.07);
+  --glass-depth: rgb(0 0 0 / 0.07);
+  --glass-sheen: 0.55;
+  --glass-glint: 0.7;
+  --glass-drop: rgb(255 255 255 / 0.62);
+  isolation: isolate;
+  background:
+    linear-gradient(
+      180deg,
+      rgb(255 255 255 / calc(var(--glass-sheen) * 0.5)),
+      transparent 42%,
+      rgb(255 255 255 / calc(var(--glass-sheen) * 0.18))
+    ),
+    var(--glass-tint);
+  /* Unprefixed only: the build adds the -webkit- one, and drops both if it
+     finds the pair already written out. */
+  backdrop-filter: blur(20px) saturate(190%);
+  box-shadow:
+    inset 0 1px 0.5px var(--glass-rim),
+    inset 0 -1px 0.5px var(--glass-rim-low),
+    inset 0 0 0 1px var(--glass-edge),
+    inset 0 -7px 10px -7px var(--glass-depth),
+    0 1px 2px rgb(0 0 0 / 0.06),
+    0 18px 38px -14px rgb(0 0 0 / 0.3);
+}
+:where([data-theme="dark"], [data-theme="blueprint"]) .glass {
+  --glass-tint: color-mix(in oklab, var(--surface) 44%, transparent);
+  --glass-rim: rgb(255 255 255 / 0.3);
+  --glass-rim-low: rgb(255 255 255 / 0.07);
+  --glass-edge: rgb(255 255 255 / 0.08);
+  --glass-depth: rgb(0 0 0 / 0.45);
+  --glass-sheen: 0.12;
+  --glass-glint: 0.22;
+  --glass-drop: rgb(255 255 255 / 0.13);
+}
+.glass::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  pointer-events: none;
+  background: radial-gradient(
+    90px 42px at var(--light, 50%) 0,
+    rgb(255 255 255 / var(--glass-glint)),
+    transparent 72%
+  );
+  opacity: 0;
+  transition: opacity 0.4s ease-out;
+}
+.glass:hover::before {
+  opacity: 1;
+}
+
+/* ── Dock ───────────────────────────────────────────────────────────────
+   Every place is a 44px circle with 4px between, inside 6px of padding, so
+   where the drop and the name sit follows from a place's number alone:
+   --at is the place, --count how many there are. */
+.dock-drop {
+  position: absolute;
+  top: 6px;
+  bottom: 6px;
+  left: calc(6px + var(--at) * 48px);
+  right: calc(6px + (var(--count) - 1 - var(--at)) * 48px);
+  z-index: -1;
+  border-radius: 9999px;
+  pointer-events: none;
+  background: linear-gradient(180deg, rgb(255 255 255 / 0.22), transparent 60%), var(--glass-drop);
+  box-shadow:
+    inset 0 1px 0.5px var(--glass-rim),
+    inset 0 -1px 0.5px var(--glass-rim-low),
+    inset 0 0 0 1px var(--glass-edge),
+    0 1px 2px rgb(0 0 0 / 0.1),
+    0 4px 10px -4px rgb(0 0 0 / 0.18);
+}
+/* The edge it is heading towards goes first and quickly; the edge behind
+   follows on a spring, a touch late. In between, the drop is stretched. */
+.dock-drop[data-heading="right"] {
+  transition:
+    right 0.3s var(--ease-out-quint),
+    left 0.62s var(--ease-spring-soft) 0.05s,
+    opacity 0.3s ease-out;
+}
+.dock-drop[data-heading="left"] {
+  transition:
+    left 0.3s var(--ease-out-quint),
+    right 0.62s var(--ease-spring-soft) 0.05s,
+    opacity 0.3s ease-out;
+}
+
+.dock-name {
+  position: absolute;
+  bottom: calc(100% + 10px);
+  left: calc(28px + var(--at) * 48px);
+  translate: -50% 6px;
+  scale: 0.94;
+  padding: 5px 11px;
+  border-radius: 9999px;
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 500;
+  white-space: nowrap;
+  color: var(--ink);
+  opacity: 0;
+  pointer-events: none;
+  transform-origin: 50% 100%;
+  transition:
+    opacity 0.2s ease-out,
+    translate 0.3s var(--ease-out-quint),
+    scale 0.3s var(--ease-out-quint),
+    left 0.5s var(--ease-spring-soft);
+}
+.dock-name.is-up {
+  opacity: 1;
+  translate: -50% 0;
+  scale: 1;
+  transition:
+    opacity 0.25s ease-out,
+    translate 0.5s var(--ease-spring-soft),
+    scale 0.5s var(--ease-spring-soft),
+    left 0.5s var(--ease-spring-soft);
+}
+
+/* ── Immersion ──────────────────────────────────────────────────────────
+   While something has taken over the screen (a scene playing in Absolute
+   Cinema), the dock steps out of the way and the page stops scrolling. */
+[data-immersed] {
+  overflow: hidden;
+}
+[data-immersed] .dock {
+  translate: 0 160%;
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* ── Theme picker ───────────────────────────────────────────────────────
+   Closed, only the current theme's swatch shows. Open, all of them do. Which
+   one is current is read from <html>, so React holds no theme state and there
+   is nothing to mismatch on hydration. */
+.picker [data-swatch] {
+  width: 0;
+  margin-inline: 0;
+  opacity: 0;
+  scale: 0.4;
+  pointer-events: none;
+  transition:
+    width 0.45s var(--ease-out-quint),
+    margin 0.45s var(--ease-out-quint),
+    opacity 0.25s ease-out,
+    scale 0.45s var(--ease-spring-soft),
+    box-shadow 0.2s ease-out;
+}
+.picker[data-open] [data-swatch],
+html[data-theme="light"] .picker [data-swatch="light"],
+html[data-theme="dark"] .picker [data-swatch="dark"],
+html[data-theme="blueprint"] .picker [data-swatch="blueprint"] {
+  width: 18px;
+  margin-inline: 4px;
+  opacity: 1;
+  scale: 1;
+  pointer-events: auto;
+}
+html[data-theme="light"] .picker[data-open] [data-swatch="light"],
+html[data-theme="dark"] .picker[data-open] [data-swatch="dark"],
+html[data-theme="blueprint"] .picker[data-open] [data-swatch="blueprint"] {
+  box-shadow:
+    0 0 0 2px var(--bg),
+    0 0 0 3.5px var(--ink);
+}
+
+/* Theme switch: a circular reveal driven from the picker. */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+[data-switching] * {
+  transition: none !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }
