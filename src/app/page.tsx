@@ -1,7 +1,29 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { HeaderTools } from "@/components/header-tools";
 import { AsciiFrame } from "@/kit/ascii-frame";
 import { modules } from "@/modules/registry";
+
+// What a link to the site itself shows when it is shared. The picture is made
+// by scripts/make-og.mjs.
+const picture = { url: "/og/home.png", width: 1200, height: 630, alt: "Be Opinionated." };
+
+export const metadata: Metadata = {
+  openGraph: {
+    title: "Playground",
+    description: "Be Opinionated.",
+    url: "/",
+    siteName: "Playground",
+    type: "website",
+    images: [picture],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Playground",
+    description: "Be Opinionated.",
+    images: [picture.url],
+  },
+};
 
 export default function Page() {
   return (

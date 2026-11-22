@@ -40,6 +40,10 @@ site draws in ASCII (`public/cinema/<id>.jpg`) and the link-preview picture
 (`public/cinema/og/<id>.jpg`). Until a scene has its own frame, both come from
 the video's YouTube thumbnail.
 
+The home page and the Absolute Cinema page have no frame of their own; their
+link-preview pictures are made by `node scripts/make-og.mjs` and kept in
+`public/og/`.
+
 Link previews need the site's full address: set `NEXT_PUBLIC_SITE_URL` when
 deploying. It is fixed at build time, so with two domains on one deployment
 set it to the main one.

@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { CinemaPage } from "@/modules/cinema/cinema-page";
-import { hasFrame, previewOf, scenes } from "@/modules/cinema/scenes";
+import { hasFrame, pathOf, previewOf, scenes } from "@/modules/cinema/scenes";
 
 // One page per scene, at an address made from its title. Its own title,
 // description and picture are what show when the link is shared.
@@ -28,6 +28,7 @@ export async function generateMetadata({
     openGraph: {
       title: scene.title,
       description: scene.description,
+      url: pathOf(scene),
       siteName: "Absolute Cinema",
       type: "video.other",
       images: [picture],
