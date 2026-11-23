@@ -118,8 +118,10 @@ const px = (box: Box) => ({
  * the only navigation: it turns through the years.
  *
  * Playing takes over the screen. The picture grows out of its place on the
- * page to fill the window, everything else goes black, and only the title and
- * its line stay. Pausing sends it back to where it came from.
+ * page to fill the window, everything else goes black, and only the controls,
+ * the title and its line stay. It stays that way through a pause and after
+ * the scene ends; pressing the dark around the picture sends it back to
+ * where it came from.
  */
 export function Cinema({ start = 0 }: { start?: number }) {
   const [controller] = useState(() => new PlayerController({ remember: false }));
@@ -181,8 +183,13 @@ export function Cinema({ start = 0 }: { start?: number }) {
   if (rolling && !playing) setRolling(false);
   const showing = rolling;
   const waiting = status === "loading" || status === "buffering";
-  // On from the moment play is pressed, so the screen opens while it loads.
-  const immersed = status === "loading" || playing;
+  // Whether the picture has the whole screen. On from the moment play is
+  // pressed, so the screen opens while the scene loads, and off only when the
+  // visitor steps out: pausing does not close it. A scene that cannot be
+  // played closes it, so the reason can be read on the page.
+  const [dark, setDark] = useState(false);
+  if (dark && status === "error") setDark(false);
+  const immersed = dark;
 
   // The morph. The picture always lives in the same place in the page; here
   // it is lifted out to a fixed box and animated between the two positions,
@@ -252,7 +259,9 @@ export function Cinema({ start = 0 }: { start?: number }) {
     document.title = `${scenes[next].title} · Playground`;
   }
 
+  /** Play, or pause if it is running. Starting it opens the screen. */
   function play() {
+    if (!playing) setDark(true);
     if (started) controller.toggle();
     else controller.load({ videoId: scene.id, start: scene.start });
     root.current?.focus({ preventScroll: true });
@@ -260,6 +269,7 @@ export function Cinema({ start = 0 }: { start?: number }) {
 
   /** Step out of the dark: pause if it is running, give up if it never began. */
   function leave() {
+    setDark(false);
     if (playing) controller.toggle();
     else if (status === "loading") controller.clear();
   }
@@ -274,7 +284,7 @@ export function Cinema({ start = 0 }: { start?: number }) {
     onClick: (event: MouseEvent<HTMLAnchorElement>) => {
       const at = Math.floor(controller.time());
       if (at > 0) event.currentTarget.href = `https://www.youtube.com/watch?v=${scene.id}&t=${at}s`;
-      leave();
+      if (playing) controller.toggle();
     },
   };
 
@@ -296,7 +306,7 @@ export function Cinema({ start = 0 }: { start?: number }) {
 
   return (
     <div ref={root} tabIndex={-1} onKeyDown={keys} className="outline-none">
-      {/* The dark. Pressing it anywhere brings the page back. */}
+      {/* The dark around the picture. Pressing it is the way back to the page. */}
       <div
         onClick={leave}
         aria-hidden
@@ -311,10 +321,11 @@ export function Cinema({ start = 0 }: { start?: number }) {
           className={`absolute inset-0 overflow-hidden bg-[#05070c] transition-[border-radius,box-shadow] duration-700 ease-out-quint ${immersed ? "rounded-none" : "rounded-[20px] shadow-stage"}`}
         >
           {/* The player takes no pointer, so hovering never calls up YouTube's
-              panels. Pressing the picture is handled here instead: it pauses. */}
+              panels. Pressing the picture is handled here instead: it pauses,
+              and the drawing comes back over it until play is pressed again. */}
           <div
             ref={screen}
-            onClick={leave}
+            onClick={play}
             className={`absolute inset-0 [&_iframe]:pointer-events-none [&_iframe]:size-full ${showing ? "" : "invisible"}`}
           />
           {/* The cover, and on it the controls. Both belong to the drawing, not
