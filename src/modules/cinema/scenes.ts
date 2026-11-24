@@ -70,6 +70,14 @@ export const scenes: Scene[] = [
     year: 2019,
   },
   {
+    id: "3S16b-x5mRA",
+    slug: "barbecue-sauce",
+    title: "Barbecue Sauce",
+    description: "Be curious, not judgemental",
+    source: "Ted Lasso",
+    year: 2020,
+  },
+  {
     id: "_pQ9XOPYvIk",
     slug: "86-years",
     title: "86 Years",

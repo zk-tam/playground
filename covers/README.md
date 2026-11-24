@@ -7,6 +7,7 @@ Name each file after the scene's slug, the last part of its address:
     theres-a-man-named-hershey.webp
     when-are-you-gonna-take-it.webp
     l-to-the-og.webp
+    barbecue-sauce.webp
     86-years.webp
     ill-take-ser-duncans-side.webp
 

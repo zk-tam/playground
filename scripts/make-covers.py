@@ -52,6 +52,7 @@ FOCUS = {
     "finals": (0.5, 0.34),  # a 4:3 frame: keep the faces, lose the floor
     "the-best": (0.47, 0.5),  # a very wide frame: he stands just left of centre
     "when-are-you-gonna-take-it": (0.63, 0.5),  # the leopard sits right of centre
+    "barbecue-sauce": (0.2, 0.5),  # his face is left of centre, the dart to its right
 }
 
 # Frames whose subject gets lost once it is drawn in characters, because what
@@ -71,6 +72,11 @@ TREAT = {
         "light": ((0.5, 0.53), (0.36, 0.26), 0.2),
         "cool": 0.3,
         "gain": 1.5,
+    },
+    # A dim room: lift it, and let the light sit on his face and the dart.
+    "barbecue-sauce": {
+        "light": ((0.45, 0.42), (0.4, 0.42), 0.45),
+        "gain": 1.8,
     },
 }
 LIGHT_FADE = 0.9  # how gradually the spotlight falls away, in its own widths
