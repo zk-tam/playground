@@ -53,6 +53,7 @@ FOCUS = {
     "the-best": (0.47, 0.5),  # a very wide frame: he stands just left of centre
     "when-are-you-gonna-take-it": (0.63, 0.5),  # the leopard sits right of centre
     "barbecue-sauce": (0.2, 0.5),  # his face is left of centre, the dart to its right
+    "do-i-make-her-proud": (0.9, 0.5),  # the boy's face is right of centre
 }
 
 # Frames whose subject gets lost once it is drawn in characters, because what
@@ -72,6 +73,11 @@ TREAT = {
         "light": ((0.5, 0.53), (0.36, 0.26), 0.2),
         "cool": 0.3,
         "gain": 1.5,
+    },
+    # A soft, even close-up: lift it, with the light on the boy's face.
+    "do-i-make-her-proud": {
+        "light": ((0.62, 0.45), (0.3, 0.44), 0.5),
+        "gain": 1.7,
     },
     # A dim room: lift it, and let the light sit on his face and the dart.
     "barbecue-sauce": {

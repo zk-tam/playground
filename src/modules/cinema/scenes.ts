@@ -37,6 +37,16 @@ export const scenes: Scene[] = [
     year: 1997,
   },
   {
+    id: "9zTRxiG2Rno",
+    slug: "do-i-make-her-proud",
+    title: "Do I make her proud?",
+    description: "everyday.",
+    source: "The Sixth Sense",
+    year: 1999,
+    // The clip is the whole scene; this is the moment itself, 2:10 in.
+    start: 130,
+  },
+  {
     id: "fzAKSbtYBMU",
     slug: "the-best",
     title: "The Best",

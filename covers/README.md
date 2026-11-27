@@ -3,6 +3,7 @@ Put one frame per scene here, then run `python3 scripts/make-covers.py`.
 Name each file after the scene's slug, the last part of its address:
 
     finals.webp
+    do-i-make-her-proud.webp
     the-best.webp
     theres-a-man-named-hershey.webp
     when-are-you-gonna-take-it.webp
