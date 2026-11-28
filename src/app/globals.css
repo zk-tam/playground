@@ -401,6 +401,46 @@
   align-items: flex-start;
   gap: 10px;
 }
+/* The row and the little space above it: where a pull upwards is felt. */
+.film-reach {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+}
+/* While the sheet's frames stand in for the row's own, the row's are put
+   out of sight. Its ring and its years stay: the sheet fades in over them. */
+.film[data-lifted] .film-scroll .film-band {
+  visibility: hidden;
+}
+/* A handle: this can be pulled. Above the row on a phone, where there is no
+   button, and at the top of the sheet. */
+.film-grab {
+  display: none;
+  position: absolute;
+  left: 50%;
+  width: 56px;
+  height: 22px;
+  translate: -50% 0;
+  touch-action: none;
+  cursor: grab;
+  transition: opacity 0.25s ease-out;
+}
+.film-grab::before {
+  content: "";
+  position: absolute;
+  top: 9px;
+  left: 10px;
+  width: 36px;
+  height: 4px;
+  border-radius: 2px;
+  background: color-mix(in oklab, var(--ink) 20%, transparent);
+}
+.film-grab.is-off {
+  opacity: 0;
+}
+.film-reach > .film-grab {
+  bottom: calc(100% + 1px);
+}
 .film-scroll {
   overflow: auto hidden;
   scroll-snap-type: x mandatory;
@@ -409,6 +449,11 @@
   /* Sideways is the browser's to scroll; up is ours, to open the sheet. */
   touch-action: pan-x;
   cursor: grab;
+  /* A finger held on a frame opens the sheet: no text selection, and none of
+     the phone's own long-press menus, in the way. */
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
   /* The row runs on past both ends of what is shown. */
   mask-image: linear-gradient(90deg, transparent, black 14%, black 86%, transparent);
 }
@@ -482,7 +527,6 @@
   inset-inline: 0;
   bottom: calc(100% + 6px);
   margin: 0;
-  padding-right: 50px;
   overflow: hidden;
   color: var(--ink-2);
   font-size: 12px;
@@ -502,6 +546,22 @@
   translate: 0;
   transition-duration: 0.15s;
 }
+/* The way to the sheet in one press: a round button level with the frames,
+   beside the row. */
+.film-all {
+  margin-top: 5px;
+}
+/* On a phone there is no room beside the row: it takes the full width, and
+   a handle above it says it can be pulled up instead. */
+@media (max-width: 639px) {
+  .film[data-button="wide"] .film-all {
+    display: none;
+  }
+  .film[data-button="wide"] .film-reach > .film-grab,
+  .film-sheet-head > .film-grab {
+    display: block;
+  }
+}
 
 /* The sheet: every frame at once, as a plain grid of small covers. */
 .film-sheet {
@@ -509,6 +569,11 @@
   inset: 0;
   z-index: 60;
   outline: none;
+  /* Part-way there, under a finger, it is to be looked at, not pressed. */
+  pointer-events: none;
+}
+.film-sheet[data-open] {
+  pointer-events: auto;
 }
 /* The layer the frames live on. It fills the screen, so that a mask on it
    lines up with the row's window, and it is what scrolls. */
@@ -536,6 +601,11 @@
   max-width: 680px;
   margin-inline: auto;
   padding: 20px 0 16px;
+  /* The whole top of the sheet is its handle. */
+  touch-action: none;
+}
+.film-sheet-head > .film-grab {
+  top: 0;
 }
 .film-sheet-grid {
   position: relative;

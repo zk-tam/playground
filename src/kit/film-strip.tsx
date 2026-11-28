@@ -8,7 +8,6 @@ import {
   type PointerEvent,
 } from "react";
 import { createPortal } from "react-dom";
-import { easing } from "./bars";
 
 export type FilmFrame = {
   id: string;
@@ -21,15 +20,34 @@ export type FilmFrame = {
 
 // One frame's share of the row, in px. Must match --cell in globals.css.
 const CELL = 88;
-const SETTLE_MS = 140; // quiet for this long, and the strip has come to rest
-const PULL = 30; // drag the row up this far and it opens out
-const UNSPOOL_MS = 560;
+const SETTLE_MS = 140; // quiet for this long, and the row has come to rest
+const SPAN = 1000; // the length of the row-to-sheet change, on its own clock
+const TRAVEL_MS = 520; // how long the whole change takes when let go
+const FLICK = 0.35; // px per ms: faster than this and the flick decides
+
+const now = () => performance.now();
+const clamp = (value: number) => Math.min(1, Math.max(0, value));
+const still = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
+/** How far a finger travels to take the row all the way to the sheet. */
+const reach = () => Math.min(300, innerHeight * 0.36);
 
 type Box = { left: number; top: number; width: number; height: number };
 
 /** The move that makes `to` look as if it were sitting at `from`. */
 const from = (a: Box, to: Box) =>
   `translate(${a.left - to.left}px, ${a.top - to.top}px) scale(${a.width / to.width}, ${a.height / to.height})`;
+
+/** Rows of frames: the mark for "show them all". */
+function SheetMark() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" aria-hidden>
+      <rect x="3.5" y="4.5" width="7" height="6" rx="1" />
+      <rect x="13.5" y="4.5" width="7" height="6" rx="1" />
+      <rect x="3.5" y="13.5" width="7" height="6" rx="1" />
+      <rect x="13.5" y="13.5" width="7" height="6" rx="1" />
+    </svg>
+  );
+}
 
 /** A frame's picture: a small cover. */
 function Band({ frame }: { frame: FilmFrame }) {
@@ -41,18 +59,35 @@ function Band({ frame }: { frame: FilmFrame }) {
   );
 }
 
+/** A pull in progress: where it began, and how fast it is going. */
+type Pull = {
+  id: number;
+  x: number;
+  y: number;
+  /** Progress when it began: 0 in the row, 1 on the sheet. */
+  base: number;
+  lifting: boolean;
+  lastY: number;
+  lastAt: number;
+  /** Upwards is positive, px per ms. */
+  speed: number;
+};
+
 /**
  * A row of frames to choose from, in the way of a strip of film, without the
  * dressing: each item is a small picture with a short code (a year) under
  * it. Drag the row through the ring in the middle, or press a frame, and the
  * one in the ring is the one chosen. Frames grow and brighten as they near it.
  *
- * The row is for what is near. For what is far, it opens out: pull it up (or
- * press the button beside it) and every frame is laid out at once as a sheet,
- * with its title. The frames travel from their places in the row to their
- * places on the sheet; press one and they travel back with it in the ring.
+ * The row is for what is near. For what is far, it opens into a sheet: every
+ * frame laid out at once, with its title. That change belongs to the finger.
+ * Pull the row up and the frames leave it and spread towards their places on
+ * the sheet exactly as far as you have pulled; let go and it finishes, or
+ * goes back, whichever is nearer or whichever way it was flicked. The handle
+ * at the top of the sheet pulls it back down the same way. A button beside
+ * the row does it in one press where there is room for one.
  *
- * `onChange` is called once the strip has come to rest, not while it is
+ * `onChange` is called once the row has come to rest, not while it is
  * moving, so whatever follows the choice is not redrawn for every frame that
  * passes through the ring.
  */
@@ -61,6 +96,7 @@ export function FilmStrip({
   value,
   onChange,
   label,
+  ownButton = "always",
   className = "",
 }: {
   frames: FilmFrame[];
@@ -68,19 +104,24 @@ export function FilmStrip({
   onChange: (index: number) => void;
   /** What these are, for the sheet's heading: "9 artifacts". */
   label: string;
+  /**
+   * When the row shows a button for the sheet, beside itself. "wide" leaves
+   * it out on a phone, where there is no room beside the row: there a small
+   * handle above the row says it can be pulled up.
+   */
+  ownButton?: "always" | "wide";
   className?: string;
 }) {
   const root = useRef<HTMLDivElement>(null);
   const scroller = useRef<HTMLDivElement>(null);
   const sheet = useRef<HTMLDivElement>(null);
-  const veil = useRef<HTMLDivElement>(null);
   // The frame nearest the ring right now, while the row is moving.
   const [near, setNear] = useState(value);
   const [moving, setMoving] = useState(false);
-  const [open, setOpen] = useState(false);
-  // The sheet stays in the page a little longer than `open`, while it winds back.
+  // Whether the sheet is in the page at all, and whether it is the thing in
+  // front. In between, while a finger is part-way, it is shown but not open.
   const [shown, setShown] = useState(false);
-  if (open && !shown) setShown(true);
+  const [open, setOpen] = useState(false);
 
   // Sizes every frame for where the row is right now, without waiting for
   // the next animation frame. Filled in by the effect that owns the row.
@@ -90,7 +131,7 @@ export function FilmStrip({
     latest.current = { value, onChange };
   }, [value, onChange]);
 
-  /* ── The strip ──────────────────────────────────────────────────────── */
+  /* ── The row ────────────────────────────────────────────────────────── */
 
   // Start with the chosen frame in the ring, with no travel.
   useLayoutEffect(() => {
@@ -99,16 +140,15 @@ export function FilmStrip({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Chosen from somewhere else (the keyboard, the sheet): run the strip to it.
+  // Chosen from somewhere else (the keyboard, the sheet): run the row to it.
   useEffect(() => {
     const el = scroller.current;
     if (!el || Math.round(el.scrollLeft / CELL) === value) return;
-    const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
-    el.scrollTo({ left: value * CELL, behavior: still ? "auto" : "smooth" });
+    el.scrollTo({ left: value * CELL, behavior: still() ? "auto" : "smooth" });
   }, [value]);
 
-  // Size the frames by how near the ring they are, and notice when the
-  // strip comes to rest.
+  // Size the frames by how near the ring they are, and notice when the row
+  // comes to rest.
   useEffect(() => {
     const el = scroller.current;
     if (!el) return;
@@ -135,7 +175,7 @@ export function FilmStrip({
         if (el.hasAttribute("data-dragging")) return;
         // The row moved because its width changed, not because anyone moved
         // it: put the chosen frame back in the ring and choose nothing.
-        if (performance.now() < holdUntil) {
+        if (now() < holdUntil) {
           el.scrollLeft = latest.current.value * CELL;
           return setMoving(false);
         }
@@ -150,7 +190,7 @@ export function FilmStrip({
     // A window being resized or a phone being turned can leave the browser
     // snapped to a different frame. Hold the chosen one where it was.
     const resized = new ResizeObserver(() => {
-      holdUntil = performance.now() + 500;
+      holdUntil = now() + 500;
       el.scrollLeft = latest.current.value * CELL;
     });
     resized.observe(el);
@@ -163,227 +203,334 @@ export function FilmStrip({
     };
   }, [frames.length]);
 
-  // A mouse cannot fling a scroller the way a finger can, so dragging is done
-  // by hand for it. Either pointer can pull the row up to open the sheet.
-  const drag = useRef<{ id: number; x: number; y: number; left: number; moved: boolean; mouse: boolean } | null>(null);
+  /* ── Between the row and the sheet ──────────────────────────────────── */
+
+  // The whole change is one stretch of time, 0 in the row and 1 on the sheet,
+  // and everything that changes is a paused animation along it. A finger
+  // sets where on that stretch things are; letting go runs it to an end.
+  const change = useRef({ parts: [] as Animation[], at: 0, frame: 0, timer: 0 });
+  // What to do the moment the sheet is in the page and can be measured.
+  const wanted = useRef<{ at: number; then: "open" | "close" | "follow" } | null>(null);
+
+  function place(at: number) {
+    const state = change.current;
+    state.at = clamp(at);
+    for (const part of state.parts) part.currentTime = state.at * SPAN;
+  }
+
+  function halt() {
+    cancelAnimationFrame(change.current.frame);
+    clearTimeout(change.current.timer);
+  }
+
+  function clear() {
+    halt();
+    change.current.parts.forEach((part) => part.cancel());
+    change.current.parts = [];
+  }
+
+  /**
+   * Measures where every frame is in the row and on the sheet, and lays the
+   * change out between the two. The sheet must be in the page, at rest.
+   */
+  function build() {
+    const strip = scroller.current;
+    const page = sheet.current;
+    const host = root.current;
+    if (!strip || !page || !host) return false;
+    clear();
+    // The row may just have been moved to a newly chosen frame. Its frames
+    // are normally resized a moment later; here they must be right now.
+    resize.current();
+
+    const bands = (within: HTMLElement) =>
+      [...within.querySelectorAll<HTMLElement>("[data-frame] .film-band")].map((el) => el.getBoundingClientRect());
+    const onStrip = bands(strip);
+    const onSheet = bands(page);
+    const view = strip.getBoundingClientRect();
+    const inRow = [...strip.querySelectorAll<HTMLElement>("[data-frame] .film-band")].map((band) =>
+      Number(getComputedStyle(band).opacity),
+    );
+
+    const linear = { duration: SPAN, fill: "both" as const, easing: "linear" };
+    const late = (el: Element, since: number) =>
+      el.animate({ opacity: [0, 0, 1], offset: [0, since, 1] }, linear);
+    const parts: Animation[] = [];
+
+    page.querySelectorAll<HTMLElement>("[data-frame]").forEach((cell, i) => {
+      const there = from(onStrip[i], onSheet[i]);
+      // Frames with no place in the row's window have nowhere to be seen
+      // leaving from. They appear on the sheet, in the second half.
+      if (onStrip[i].right <= view.left || onStrip[i].left >= view.right) {
+        parts.push(cell.animate([{ transform: there }, { transform: "none" }], linear), late(cell, 0.5));
+      } else {
+        parts.push(
+          cell.animate(
+            [
+              { transform: there, opacity: inRow[i] },
+              { transform: "none", opacity: 1 },
+            ],
+            linear,
+          ),
+        );
+      }
+      // A frame's title belongs to the sheet: it arrives once the frame has.
+      cell.querySelectorAll(".film-title, .film-code").forEach((el) => parts.push(late(el, 0.55)));
+    });
+
+    // The row only shows what is inside its window, and fades out at both
+    // ends. The travelling frames are not in the row, so the layer they are
+    // on wears the row's own mask, and the mask travels too: closed down to
+    // the row's window at the row's end, wide open at the sheet's.
+    const stage = page.querySelector<HTMLElement>(".film-sheet-stage");
+    const mask = {
+      maskImage: "linear-gradient(90deg, transparent, black 14%, black 86%, transparent)",
+      maskRepeat: "no-repeat",
+    };
+    if (stage)
+      parts.push(
+        stage.animate(
+          [
+            { ...mask, maskSize: `${view.width}px 100%`, maskPosition: `${view.left}px 0px` },
+            // Three screens wide, centred: its faded ends are well off-screen.
+            { ...mask, maskSize: `${innerWidth * 3}px 100%`, maskPosition: `${-innerWidth}px 0px` },
+          ],
+          linear,
+        ),
+      );
+    const veil = page.querySelector(".film-sheet-veil");
+    if (veil) parts.push(veil.animate({ opacity: [0, 1] }, linear));
+    // What the frames leave behind in the row goes quickly: its ring, its
+    // years, its handle. An empty ring is not worth looking at.
+    host.querySelectorAll(".film-gate, .film-scroll .film-code, .film-reach > .film-grab").forEach((el) =>
+      parts.push(el.animate([{}, { opacity: 0, offset: 0.25 }, { opacity: 0 }], linear)),
+    );
+    const head = page.querySelector(".film-sheet-head");
+    if (head) parts.push(late(head, 0.4));
+
+    parts.forEach((part) => part.pause());
+    change.current.parts = parts;
+    // The sheet's frames now stand in for the row's own.
+    host.setAttribute("data-lifted", "");
+    document.documentElement.setAttribute("data-sheet", "");
+    return true;
+  }
+
+  /** The change has reached an end: settle there. */
+  function land(end: 0 | 1) {
+    // Back in the row, the sheet is finished with, but it stays in the page
+    // until the next render. Clearing the change lets go of its frames, and
+    // for that moment they would jump back to their places on the sheet and
+    // show it whole. So it is put out of sight first.
+    if (end === 0) sheet.current?.setAttribute("hidden", "");
+    clear();
+    change.current.at = end;
+    if (end === 1) {
+      sheet.current?.querySelector<HTMLElement>("[data-frame][aria-current]")?.focus({ preventScroll: true });
+      return;
+    }
+    root.current?.removeAttribute("data-lifted");
+    document.documentElement.removeAttribute("data-sheet");
+    setShown(false);
+  }
+
+  /** Let go: run from wherever things are to one end. */
+  function run(end: 0 | 1) {
+    halt();
+    const state = change.current;
+    const start = state.at;
+    const length = still() ? 0 : Math.max(200, TRAVEL_MS * Math.abs(end - start));
+    const began = now();
+    const step = () => {
+      halt();
+      const t = length ? Math.min(1, (now() - began) / length) : 1;
+      place(start + (end - start) * (1 - Math.pow(1 - t, 5)));
+      if (t >= 1) return land(end);
+      // Both, so it still arrives where animation frames are held back.
+      state.frame = requestAnimationFrame(step);
+      state.timer = window.setTimeout(step, 90);
+    };
+    step();
+  }
+
+  // The sheet has just been put in the page: measure, and do what was asked.
+  useLayoutEffect(() => {
+    if (!shown) return;
+    const ask = wanted.current;
+    wanted.current = null;
+    if (!build()) return;
+    place(ask?.at ?? 0);
+    if (!ask || ask.then === "open") run(1);
+    else if (ask.then === "close") run(0);
+    // Reads and writes only refs and the page; nothing here re-renders.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shown]);
+
+  // Never leave the page locked or the row's frames hidden if this goes away.
+  useEffect(() => {
+    const host = root.current;
+    const state = change.current;
+    return () => {
+      cancelAnimationFrame(state.frame);
+      clearTimeout(state.timer);
+      document.documentElement.removeAttribute("data-sheet");
+      host?.removeAttribute("data-lifted");
+    };
+  }, []);
+
+  /** Open the sheet in one go. */
+  function unfold() {
+    setOpen(true);
+    if (shown) return run(1);
+    wanted.current = { at: 0, then: "open" };
+    setShown(true);
+  }
+
+  /** Close the sheet in one go, with `index` in the ring if one was pressed. */
+  function fold(index?: number) {
+    if (index !== undefined && scroller.current) {
+      // The row is under the sheet: put the frame in the ring before the
+      // sheet's frames are sent back to where the row's are.
+      scroller.current.scrollLeft = index * CELL;
+      if (index !== value) onChange(index);
+    }
+    setOpen(false);
+    // Measured afresh: the row may have moved, the sheet may have scrolled.
+    if (!build()) return;
+    place(1);
+    run(0);
+  }
+
+  /* ── Fingers ────────────────────────────────────────────────────────── */
+
+  const pull = useRef<Pull | null>(null);
+  // A mouse cannot fling a scroller the way a finger can, so sideways
+  // dragging is done by hand for it.
+  const slide = useRef<{ left: number; moved: boolean } | null>(null);
   const dragged = useRef(false);
 
-  function grab(event: PointerEvent<HTMLDivElement>) {
+  function begin(event: PointerEvent<HTMLElement>, base: 0 | 1) {
     if (event.pointerType === "mouse" && event.button !== 0) return;
     dragged.current = false;
-    drag.current = {
+    pull.current = {
       id: event.pointerId,
       x: event.clientX,
       y: event.clientY,
-      left: event.currentTarget.scrollLeft,
-      moved: false,
-      mouse: event.pointerType === "mouse",
+      base,
+      lifting: false,
+      lastY: event.clientY,
+      lastAt: event.timeStamp,
+      speed: 0,
     };
+    slide.current =
+      base === 0 && event.pointerType === "mouse" && scroller.current
+        ? { left: scroller.current.scrollLeft, moved: false }
+        : null;
   }
 
-  function pull(event: PointerEvent<HTMLDivElement>) {
-    const held = drag.current;
+  function move(event: PointerEvent<HTMLElement>) {
+    const held = pull.current;
     if (!held || held.id !== event.pointerId) return;
     const dx = event.clientX - held.x;
-    const dy = event.clientY - held.y;
-    // Upwards, and clearly not sideways: open the sheet.
-    if (dy < -PULL && Math.abs(dy) > Math.abs(dx) * 1.3) {
-      drag.current = null;
+    let dy = event.clientY - held.y;
+
+    // Up from the row, or down from the sheet, and clearly not sideways:
+    // from here the finger has hold of the change.
+    const away = held.base === 0 ? -dy : dy;
+    if (!held.lifting && !slide.current?.moved && away > 8 && Math.abs(dy) > Math.abs(dx) * 1.3) {
+      held.lifting = true;
       dragged.current = true;
-      event.currentTarget.removeAttribute("data-dragging");
-      return setOpen(true);
+      try {
+        event.currentTarget.setPointerCapture(event.pointerId);
+      } catch {}
+      halt();
+      if (held.base === 0 && !shown) {
+        wanted.current = { at: 0, then: "follow" };
+        setShown(true);
+      } else if (change.current.parts.length) {
+        // Caught part-way through opening or closing: carry on from there.
+        held.base = change.current.at;
+      } else if (build()) place(held.base);
+      // Measure the pull from here, so nothing jumps as the finger takes over.
+      held.y = event.clientY;
+      dy = 0;
     }
-    if (!held.mouse) return;
-    if (!held.moved && Math.abs(dx) < 4) return;
-    if (!held.moved) {
-      held.moved = true;
+
+    if (held.lifting) {
+      const dt = event.timeStamp - held.lastAt;
+      if (dt > 0) held.speed = 0.7 * ((held.lastY - event.clientY) / dt) + 0.3 * held.speed;
+      held.lastY = event.clientY;
+      held.lastAt = event.timeStamp;
+      const at = clamp(held.base - dy / reach());
+      // Before the sheet is in the page there is nothing to move yet.
+      if (wanted.current) wanted.current.at = at;
+      else place(at);
+      return;
+    }
+
+    const sliding = slide.current;
+    const el = scroller.current;
+    if (!sliding || !el) return;
+    if (!sliding.moved && Math.abs(dx) < 4) return;
+    if (!sliding.moved) {
+      sliding.moved = true;
       dragged.current = true;
-      event.currentTarget.setAttribute("data-dragging", "");
+      el.setAttribute("data-dragging", "");
       try {
         event.currentTarget.setPointerCapture(event.pointerId);
       } catch {}
     }
-    event.currentTarget.scrollLeft = held.left - dx;
+    el.scrollLeft = sliding.left - dx;
   }
 
-  function drop(event: PointerEvent<HTMLDivElement>) {
-    const held = drag.current;
-    drag.current = null;
-    if (!held?.moved) return;
-    const el = event.currentTarget;
+  function end() {
+    const held = pull.current;
+    pull.current = null;
+    const sliding = slide.current;
+    slide.current = null;
+
+    if (held?.lifting) {
+      const at = wanted.current?.at ?? change.current.at;
+      // A flick decides; otherwise whichever end is nearer.
+      const up = held.speed > FLICK ? true : held.speed < -FLICK ? false : at > 0.42;
+      setOpen(up);
+      if (wanted.current) wanted.current.then = up ? "open" : "close";
+      else run(up ? 1 : 0);
+      return;
+    }
+
+    const el = scroller.current;
+    if (!sliding?.moved || !el) return;
     el.removeAttribute("data-dragging");
     const landed = Math.min(frames.length - 1, Math.max(0, Math.round(el.scrollLeft / CELL)));
     el.scrollTo({ left: landed * CELL, behavior: "smooth" });
   }
 
-  /* ── The sheet ──────────────────────────────────────────────────────── */
-
-  const was = useRef(false);
-  useLayoutEffect(() => {
-    const strip = scroller.current;
-    const page = sheet.current;
-    const host = root.current;
-    if (!shown || !strip || !page || !host || open === was.current) return;
-    was.current = open;
-
-    const html = document.documentElement;
-    const bands = (within: HTMLElement) =>
-      [...within.querySelectorAll<HTMLElement>("[data-frame] .film-band")].map((el) => el.getBoundingClientRect());
-    const cells = [...page.querySelectorAll<HTMLElement>("[data-frame]")];
-    const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
-    const duration = still ? 0 : UNSPOOL_MS;
-    const chosen = latest.current.value;
-    // Frames nearest the chosen one go first, so the sheet opens outwards.
-    const wait = (i: number) => (still ? 0 : Math.min(Math.abs(i - chosen), 9) * 16);
-
-    // The row may just have been moved to a newly chosen frame. Its frames
-    // are normally resized a moment later; here they must be right now,
-    // because their sizes and fades are about to be read.
-    resize.current();
-
-    // Where each frame sits in the row, and on the sheet. Both are read
-    // before anything is hidden or moved.
-    const onStrip = bands(strip);
-    const onSheet = bands(page);
-
-    // How faint each frame is at rest in the row, so a travelling frame can
-    // start from, or arrive at, exactly that.
-    const inRow = [...strip.querySelectorAll<HTMLElement>("[data-frame] .film-band")].map((band) => ({
-      opacity: Number(getComputedStyle(band).opacity),
-    }));
-    // Frames with no place in the row's window have nowhere to be seen
-    // arriving. They fade where they are, early, and are gone before the
-    // others land; on the way out they are the last to appear.
-    const window_ = strip.getBoundingClientRect();
-    const unseen = onStrip.map((box) => box.right <= window_.left || box.left >= window_.right);
-    const whole = { opacity: 1 };
-    const words = (cell: HTMLElement) => [...cell.querySelectorAll<HTMLElement>(".film-title, .film-code")];
-
-    // The row only shows what is inside its window, and fades out at both
-    // ends. The travelling frames are not in the row, so nothing does that for
-    // them: left alone, the ones that belong outside the window would be seen
-    // whole beside it. So the sheet wears the row's own mask, and the mask
-    // travels too: wide open over the whole screen at the sheet's end, closed
-    // down to the row's window at the row's end. Frames slide in under its
-    // edges just as they do in the row, and the hand-over is exact.
-    // The mask goes on the layer that fills the screen and holds the frames,
-    // so it is measured from the screen's own left edge, as the row's window is.
-    const stage = page.querySelector<HTMLElement>(".film-sheet-stage");
-    const view = strip.getBoundingClientRect();
-    const mask = {
-      maskImage: "linear-gradient(90deg, transparent, black 14%, black 86%, transparent)",
-      maskRepeat: "no-repeat",
-    };
-    const wide = {
-      ...mask,
-      // Three screens wide, centred: its faded ends are well off-screen.
-      maskSize: `${innerWidth * 3}px 100%`,
-      maskPosition: `${-innerWidth}px 0px`,
-    };
-    const closed = {
-      ...mask,
-      maskSize: `${view.width}px 100%`,
-      maskPosition: `${view.left}px 0px`,
-    };
-
-    if (open) {
-      html.setAttribute("data-sheet", "");
-      host.setAttribute("data-away", "");
-      cells.forEach((cell, i) => {
-        const timing = { duration, delay: wait(i), easing: easing("out-quint"), fill: "backwards" as const };
-        if (unseen[i]) {
-          cell.animate([{ transform: from(onStrip[i], onSheet[i]) }, { transform: "none" }], timing);
-          cell.animate({ opacity: [0, 0, 1], offset: [0, 0.45, 1] }, { ...timing, easing: "ease-out" });
-        } else
-          cell.animate(
-            [
-              { transform: from(onStrip[i], onSheet[i]), ...inRow[i] },
-              { transform: "none", ...whole },
-            ],
-            timing,
-          );
-        // Its title belongs to the sheet: it arrives once the frame has.
-        words(cell).forEach((el) => el.animate({ opacity: [0, 0, 1] }, timing));
-      });
-      stage?.animate([closed, wide], { duration, easing: easing("out-quint") });
-      veil.current?.animate({ opacity: [0, 1] }, { duration, easing: "ease-out" });
-      page.querySelector<HTMLElement>(".film-sheet-head")?.animate({ opacity: [0, 1] }, { duration, easing: "ease-out" });
-      page.querySelector<HTMLElement>("[data-frame][aria-current]")?.focus({ preventScroll: true });
-      return;
-    }
-
-    const leaving = cells.map((cell, i) => {
-      const timing = { duration, delay: wait(i) / 2, easing: easing("out-quint"), fill: "forwards" as const };
-      words(cell).forEach((el) => el.animate({ opacity: [1, 0, 0] }, timing));
-      if (unseen[i]) {
-        cell.animate({ opacity: [1, 0] }, { duration: duration * 0.3, easing: "ease-out", fill: "forwards" });
-        return cell.animate([{ transform: "none" }, { transform: from(onStrip[i], onSheet[i]) }], timing);
-      }
-      return cell.animate(
-        [
-          { transform: "none", ...whole },
-          { transform: from(onStrip[i], onSheet[i]), ...inRow[i] },
-        ],
-        timing,
-      );
-    });
-    const closing = { duration, easing: "ease-out", fill: "forwards" as const };
-    stage?.animate([wide, closed], { duration, easing: easing("out-quint"), fill: "forwards" });
-    veil.current?.animate({ opacity: [1, 0] }, closing);
-    page.querySelector<HTMLElement>(".film-sheet-head")?.animate({ opacity: [1, 0] }, closing);
-    const done = () => {
-      html.removeAttribute("data-sheet");
-      host.removeAttribute("data-away");
-      // The row takes over from frames that are already where its own are.
-      // Only its year labels and the ring are new: let them in gently.
-      if (!still)
-        host
-          .querySelectorAll<HTMLElement>(".film-code, .film-gate")
-          .forEach((el) => el.animate([{ opacity: 0 }, {}], { duration: 260, easing: "ease-out" }));
-      setShown(false);
-    };
-    Promise.all(leaving.map((animation) => animation.finished)).then(done, done);
-  }, [open, shown]);
-
-  // Never leave the page locked or the strip hidden if this goes away mid-way.
-  useEffect(() => {
-    const host = root.current;
-    return () => {
-      document.documentElement.removeAttribute("data-sheet");
-      host?.removeAttribute("data-away");
-    };
-  }, []);
-
-  /** Close the sheet, with `index` in the ring if one was pressed. */
-  function wind(index?: number) {
-    if (index !== undefined && scroller.current) {
-      // The row is out of sight: put the frame in the ring before the
-      // sheet's frames fly back to where the strip's are.
-      scroller.current.scrollLeft = index * CELL;
-      if (index !== value) onChange(index);
-    }
-    setOpen(false);
-  }
-
   const shownFrame = frames[near] ?? frames[value];
 
   return (
-    <div ref={root} className={`film ${className}`}>
-      {/* While the row is moving: what is passing through the ring. */}
-      <p aria-hidden className={`film-caption ${moving ? "is-on" : ""}`}>
-        {shownFrame?.title}
-      </p>
+    <div ref={root} className={`film ${className}`} data-button={ownButton}>
+      <div
+        className="film-reach"
+        onPointerDown={(event) => begin(event, 0)}
+        onPointerMove={move}
+        onPointerUp={end}
+        onPointerCancel={end}
+      >
+        {/* Says the row can be pulled up. While the row is moving it gives
+            way to the title of whatever is passing through the ring. */}
+        <span aria-hidden className={`film-grab ${moving ? "is-off" : ""}`} />
+        <p aria-hidden className={`film-caption ${moving ? "is-on" : ""}`}>
+          {shownFrame?.title}
+        </p>
 
-      <div className="relative min-w-0 flex-1">
         <div
           ref={scroller}
           role="listbox"
           aria-label={label}
           aria-orientation="horizontal"
-          onPointerDown={grab}
-          onPointerMove={pull}
-          onPointerUp={drop}
-          onPointerCancel={drop}
+          // Holding a picture must not bring up the browser's own menu for it.
+          onContextMenu={(event) => event.preventDefault()}
           className="film-scroll"
         >
           <div className="film-track">
@@ -419,16 +566,10 @@ export function FilmStrip({
         aria-label={`All ${label}`}
         aria-haspopup="dialog"
         aria-expanded={open}
-        onClick={() => setOpen(true)}
-        className="mt-[5px] grid size-[45px] shrink-0 place-items-center rounded-full bg-sunken text-ink-2 transition-[scale,color] duration-200 ease-out-quint hover:text-ink active:scale-90"
+        onClick={unfold}
+        className="film-all grid size-[45px] shrink-0 place-items-center rounded-full bg-sunken text-ink-2 transition-[scale,color] duration-200 ease-out-quint hover:text-ink active:scale-90"
       >
-        {/* Rows of frames: the sheet. */}
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" aria-hidden>
-          <rect x="3.5" y="4.5" width="7" height="6" rx="1" />
-          <rect x="13.5" y="4.5" width="7" height="6" rx="1" />
-          <rect x="3.5" y="13.5" width="7" height="6" rx="1" />
-          <rect x="13.5" y="13.5" width="7" height="6" rx="1" />
-        </svg>
+        <SheetMark />
       </button>
 
       {shown &&
@@ -438,21 +579,31 @@ export function FilmStrip({
             role="dialog"
             aria-modal
             aria-label={label}
-            onKeyDown={(event) => event.key === "Escape" && wind()}
+            aria-hidden={!open}
+            data-open={open || undefined}
+            onKeyDown={(event) => event.key === "Escape" && fold()}
             className="film-sheet"
           >
-            <div ref={veil} className="film-sheet-veil" />
+            <div className="film-sheet-veil" />
             {/* Fills the screen and scrolls. Pressing its empty part closes. */}
             <div
               className="film-sheet-stage"
-              onClick={(event) => event.target === event.currentTarget && wind()}
+              onClick={(event) => event.target === event.currentTarget && fold()}
             >
-              <div className="film-sheet-head">
+              {/* The top of the sheet is its handle: pull it down to close. */}
+              <div
+                className="film-sheet-head"
+                onPointerDown={(event) => begin(event, 1)}
+                onPointerMove={move}
+                onPointerUp={end}
+                onPointerCancel={end}
+              >
+                <span aria-hidden className="film-grab" />
                 <p className="font-medium">{label}</p>
                 <button
                   type="button"
                   aria-label="Close"
-                  onClick={() => wind()}
+                  onClick={() => !dragged.current && fold()}
                   className="grid size-9 place-items-center rounded-full bg-sunken text-ink-2 transition-[scale,color] duration-200 ease-out-quint hover:text-ink active:scale-90"
                 >
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
@@ -460,14 +611,14 @@ export function FilmStrip({
                   </svg>
                 </button>
               </div>
-              <div className="film-sheet-grid" onClick={(event) => event.target === event.currentTarget && wind()}>
+              <div className="film-sheet-grid" onClick={(event) => event.target === event.currentTarget && fold()}>
                 {frames.map((frame, i) => (
                   <button
                     key={frame.id}
                     type="button"
                     data-frame
                     aria-current={i === value ? "true" : undefined}
-                    onClick={() => wind(i)}
+                    onClick={() => fold(i)}
                     className="film-cell"
                   >
                     <Band frame={frame} />

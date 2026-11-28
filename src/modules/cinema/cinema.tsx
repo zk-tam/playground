@@ -450,6 +450,7 @@ export function Cinema({ start = 0 }: { start?: number }) {
 
       <div className="mt-8">
         <FilmStrip
+          ownButton="wide"
           frames={frames}
           value={index}
           onChange={choose}
