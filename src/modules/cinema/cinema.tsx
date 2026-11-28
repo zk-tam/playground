@@ -15,11 +15,17 @@ import { PlayerController } from "@/kit/player/controller";
 import { Scrubber } from "@/kit/player/scrubber";
 import { PlayPause, Speaker, iconButton } from "@/kit/player/transport";
 import { Like, Share } from "@/kit/reactions";
-import { Wheel } from "@/kit/wheel";
+import { FilmStrip } from "@/kit/film-strip";
 import { Words } from "@/kit/words";
-import { coverOf, pathOf, scenes } from "./scenes";
+import { coverOf, frameOf, pathOf, scenes } from "./scenes";
 
-const years = scenes.map((scene) => String(scene.year));
+// Every scene as a frame on the film strip: its drawing, its year, its title.
+const frames = scenes.map((scene) => ({
+  id: scene.id,
+  src: frameOf(scene),
+  code: String(scene.year),
+  title: scene.title,
+}));
 
 /** A screen with a play triangle: the familiar shape of a link to YouTube. */
 function YouTubeMark() {
@@ -114,8 +120,9 @@ const px = (box: Box) => ({
 
 /**
  * One scene at a time. The cover is a frame of it, drawn in characters; press
- * it and the drawing gives way to the scene itself. The wheel underneath is
- * the only navigation: it turns through the years.
+ * it and the drawing gives way to the scene itself. The film strip underneath
+ * is the way around: every scene is a frame on it, and it unspools into a
+ * contact sheet of them all.
  *
  * Playing takes over the screen. The picture grows out of its place on the
  * page to fill the window, everything else goes black, and only the controls,
@@ -147,7 +154,7 @@ export function Cinema({ start = 0 }: { start?: number }) {
 
   // Have the scene waiting in the player before anyone presses play, so the
   // first press starts it (see `prepare`). A short pause first: the page gets
-  // to draw, and turning the wheel past several scenes fetches only the last.
+  // to draw, and running the strip past several scenes fetches only the last.
   useEffect(() => {
     const id = setTimeout(
       () => controller.prepare({ videoId: scene.id, start: scene.start }),
@@ -441,8 +448,13 @@ export function Cinema({ start = 0 }: { start?: number }) {
         </p>
       )}
 
-      <div className="mt-6">
-        <Wheel labels={years} value={index} onChange={choose} label="Year" />
+      <div className="mt-8">
+        <FilmStrip
+          frames={frames}
+          value={index}
+          onChange={choose}
+          label={`${scenes.length} artifacts`}
+        />
       </div>
     </div>
   );

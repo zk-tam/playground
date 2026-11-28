@@ -126,4 +126,13 @@ export const previewOf = (scene: Scene) =>
     ? `/cinema/og/${scene.id}.png`
     : `https://i.ytimg.com/vi/${scene.id}/hqdefault.jpg`;
 
+/**
+ * A small picture of a scene for the film strip: its drawing, shrunk by
+ * scripts/make-og.mjs.
+ */
+export const frameOf = (scene: Scene) =>
+  framed.has(scene.id)
+    ? `/cinema/strip/${scene.id}.jpg`
+    : `https://i.ytimg.com/vi/${scene.id}/mqdefault.jpg`;
+
 export const pathOf = (scene: Scene) => `/absolute-cinema/${scene.slug}`;

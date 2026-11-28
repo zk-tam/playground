@@ -83,7 +83,11 @@ the newsletter gives that visitor an email; nothing else changes.
 - `src/kit/` — the shared parts:
   - `ascii-frame.tsx` — any image, redrawn in characters. Each character is a
     particle: the pointer scatters the ones near it and they spring back.
+  - `film-strip.tsx` — a row of small frames to choose from: drag it through
+    the ring in the middle, or pull it up and it opens into a sheet of every
+    frame. Absolute Cinema's way around.
   - `wheel.tsx` — a notched wheel of labelled stops under a fixed needle.
+    Not in use at the moment; the film strip took its place.
   - `words.tsx` — a line of text that arrives a word at a time.
   - `reactions.tsx` — like (shared count), share, and the newsletter bell.
   - `keypad.tsx` — the site's own on-screen keyboard for touch screens, in

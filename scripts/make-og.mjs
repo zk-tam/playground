@@ -6,16 +6,19 @@
 //   public/og/home.png             the site's words, set large
 //   public/og/absolute-cinema.png  the module's own picture, whole, on the dark
 //   public/cinema/og/<id>.png      each scene, from its cover
+//   public/cinema/strip/<id>.jpg   the same drawing, small, for the film strip
 //
 // The pictures are committed like any other. Run this again when a scene is
 // added (after scripts/make-covers.py), or when the words or artwork change.
 //
 // Needs IBM Plex Mono installed, and `sips`, which ships with macOS.
 
+import { execFile } from "node:child_process";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { promisify } from "node:util";
 import { ImageResponse } from "next/og.js";
 import { createElement as h } from "react";
 import { HEIGHT, NIGHT, WIDTH, ascii, mono } from "./ascii-og.mjs";
@@ -107,7 +110,16 @@ try {
   // Every scene that has a cover of its own. The cover is 16:9; the preview
   // is a little wider, so a sliver comes off the top and bottom.
   const covers = JSON.parse(await readFile(join(root, "src/modules/cinema/covers.json"), "utf8"));
-  for (const id of covers) await save(`cinema/og/${id}.png`, join(root, `public/cinema/${id}.jpg`));
+  await mkdir(join(root, "public/cinema/strip"), { recursive: true });
+  for (const id of covers) {
+    await save(`cinema/og/${id}.png`, join(root, `public/cinema/${id}.jpg`));
+    // A frame on the film strip is under 200px wide: a small copy is plenty.
+    await promisify(execFile)("sips", [
+      "-Z", "352", "-s", "format", "jpeg", "-s", "formatOptions", "82",
+      join(root, `public/cinema/og/${id}.png`),
+      "--out", join(root, `public/cinema/strip/${id}.jpg`),
+    ]);
+  }
 } finally {
   await rm(work, { recursive: true, force: true });
 }
